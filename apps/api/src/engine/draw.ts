@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { addUsage, asHistory, chat, imagePart, textPart, type Effort, type Message, type Part, type Tool } from './llm.ts';
 import { runProgram, drawlibSource } from '../sandbox/run.ts';
 import { checkSvg } from './svg.ts';
-import { closeup, compare, fitCheck, forModel, normalizePalette, offPalette, render, sizeOf, symmetry, unitCheck } from './render.ts';
+import { closeup, compare, fitCheck, forModel, normalizePalette, offPalette, render, sizeOf, symmetry, unitCheck, windowOf } from './render.ts';
 import { rel } from '../store.ts';
 import type { Checks, Iteration, Layout, PaletteColor, Reading, Run, RunEvent } from '@telios/shared';
 
@@ -133,7 +133,7 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
   const messages: Message[] = [{ role: 'system', content: SYSTEM }, await firstMessage(ctx)];
   let best: { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null } | null = null;
   let attempted = '';      // the last program tried, rendered or not: revise edits it
-  let renders = 0, attempts = 0, nudged = false, overLimit = 0;
+  let renders = 0, attempts = 0, nudged = false, overLimit = 0, cutOff = 0;
   let finished: z.infer<typeof FinishInput> | null = null;
 
   emit({ type: 'status', status: 'running', stage: 'plan', message: 'Studying the original' });
@@ -144,16 +144,28 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
       messages,
       tools: TOOLS,
       maxTokens: 48000,
-      effort: run.options.effort as Effort,
+      // after a reply that thought until it ran out of room, the next one thinks less
+      effort: cutOff ? 'low' : run.options.effort as Effort,
       signal,
       onProgress: (p) => emit({ type: 'progress', message: p.toolInput ? `Writing ${p.tool === 'revise' ? 'changes' : 'the program'} (${(p.toolInput / 1024).toFixed(1)} KB)` : p.text ? 'Writing' : `Thinking (about ${Math.round(p.reasoning / 6).toLocaleString('en-US')} words)` }),
     }).catch((e) => { throw signal.aborted ? new Canceled('canceled') : e; });
     addUsage(run.usage, res.usage);
     emit({ type: 'usage', usage: run.usage });
-    messages.push(asHistory(res.message));   // appended unchanged
     if (res.finishReason === 'content_filter') throw new Error('The model declined to continue this drawing.');
-    if (res.message.content?.trim()) emit({ type: 'note', text: res.message.content.trim() });
     const calls = res.message.tool_calls ?? [];
+    if (!calls.length && !res.message.content?.trim()) {
+      // nothing but thinking: an empty turn can't go back into the conversation (the API refuses
+      // it), so it is left out and the model asked again, to act this time
+      if (++cutOff > 2) throw new Error('The model kept thinking without drawing anything; try again, or with fewer renders.');
+      emit({ type: 'note', text: res.finishReason === 'length' ? 'The model thought until it ran out of room without drawing; asking it to draw now.' : 'The model stopped without drawing; asking again.' });
+      messages.push({ role: 'user', content: best
+        ? 'Your last reply ended before you called a tool. Do not plan again: call revise with small edits, or finish.'
+        : 'Your last reply ended before you called a tool: it spent all its room planning. Do not plan again. Call draw now with a first, simpler version of the program (the structure, the bands and one unit); you will refine it with revise after you see it.' });
+      continue;
+    }
+    cutOff = 0;
+    messages.push(asHistory(res.message));   // appended unchanged
+    if (res.message.content?.trim()) emit({ type: 'note', text: res.message.content.trim() });
     if (!calls.length) {
       if (nudged) break;
       nudged = true;
@@ -284,6 +296,19 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
     if (run.reading.colorMode === 'neutral' && palette.some((p) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(p.hex.slice(i, i + 2), 16)); return Math.max(r, g, b) - Math.min(r, g, b) > 6; })) warnings.push('The color rule is a neutral base, but the palette has hues: use grays only.');
     if (palette.length > 14) warnings.push(`The palette has ${palette.length} colors: use fewer flat colors (each becomes a layer).`);
     warnings.push(...layoutWarnings(layout, size, run.reading));
+    const wantWindow = measuredWindow(ctx.analysis);
+    if (run.reading.kind === 'frame' && wantWindow) {
+      const got = await windowOf(png);
+      const pct = (v: number) => `${Math.round(v * 100)}%`;
+      const edges = (r: number[]) => [r[0], r[1], 1 - r[0] - r[2], 1 - r[1] - r[3]];   // left, top, right, bottom band depths
+      if (!got) warnings.push(`The original's window (its open middle) spans ${pct(wantWindow[0])}–${pct(wantWindow[0] + wantWindow[2])} across and ${pct(wantWindow[1])}–${pct(wantWindow[1] + wantWindow[3])} down; the drawing's middle isn't one open or flat region.`);
+      else {
+        const off = edges(got).map((v, i) => v - edges(wantWindow)[i]);
+        const names = ['left', 'top', 'right', 'bottom'];
+        const bad = off.map((d, i) => (Math.abs(d) > 0.035 ? `the ${names[i]} band is ${d > 0 ? 'too deep' : 'too shallow'} by ${pct(Math.abs(d))} of the ${i % 2 ? 'height' : 'width'}` : '')).filter(Boolean);
+        if (bad.length) warnings.push(`The window doesn't match the original's: ${bad.join('; ')}. The original's window spans ${pct(wantWindow[0])}–${pct(wantWindow[0] + wantWindow[2])} across and ${pct(wantWindow[1])}–${pct(wantWindow[1] + wantWindow[3])} down; the drawing's spans ${pct(got[0])}–${pct(got[0] + got[2])} and ${pct(got[1])}–${pct(got[1] + got[3])}.`);
+      }
+    }
     if ((run.reading.symmetry === 'four-way' || run.reading.symmetry === 'mirror-x') && sym.lr < 0.97) warnings.push(`Left–right symmetry is ${sym.lr}: the reading says the design is mirrored. Draw half and mirror it.`);
     if (run.reading.symmetry === 'four-way' && sym.tb < 0.97) warnings.push(`Top–bottom symmetry is ${sym.tb}: the reading says four-way. Mirror a quarter (unless the foot is deliberately deeper).`);
     const checks: Checks = { size, palette, offPalette: +off.share.toFixed(4), symmetry: sym, warnings };
@@ -310,6 +335,13 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
 
 export function isCanceled(e: unknown) {
   return e instanceof Canceled || (e instanceof Error && e.name === 'AbortError');
+}
+
+/** The original's window as shares of the design [x, y, w, h], from the measurements. */
+function measuredWindow(analysis: any): [number, number, number, number] | null {
+  const bb = analysis?.bbox, win = analysis?.window;
+  if (!bb || !win || !bb[2] || !bb[3]) return null;
+  return [win[0] / bb[2], win[1] / bb[3], win[2] / bb[2], win[3] / bb[3]];
 }
 
 function normalizeLayout(raw: unknown, size: [number, number]): Layout | null {

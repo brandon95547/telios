@@ -198,6 +198,33 @@ export async function symmetry(png: Buffer) {
   return { lr: +corr((x, y) => at(w - 1 - x, y)).toFixed(3), tb: +corr((x, y) => at(x, h - 1 - y)).toFixed(3) };
 }
 
+/** A frame's window in a render: the open (or flat-tinted) middle, as shares of the width and
+ * height [x, y, w, h]; null when the middle isn't an enclosed flat region. */
+export async function windowOf(png: Buffer): Promise<[number, number, number, number] | null> {
+  const { data, info } = await sharp(png).ensureAlpha().resize(400, 400, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+  const w = info.width, h = info.height;
+  const px = (i: number) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]];
+  const c = px((h >> 1) * w + (w >> 1));
+  const same = (i: number) => {
+    const p = px(i);
+    return c[3] < 16 ? p[3] < 16 : p[3] >= 16 && Math.abs(p[0] - c[0]) + Math.abs(p[1] - c[1]) + Math.abs(p[2] - c[2]) < 24;
+  };
+  const seen = new Uint8Array(w * h);
+  const stack = [(h >> 1) * w + (w >> 1)];
+  seen[stack[0]] = 1;
+  let x0 = w, y0 = h, x1 = 0, y1 = 0, n = 0;
+  while (stack.length) {
+    const i = stack.pop()!, x = i % w, y = (i / w) | 0;
+    n++;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) {
+      if (j >= 0 && !seen[j] && same(j)) { seen[j] = 1; stack.push(j); }
+    }
+  }
+  if (x0 === 0 || y0 === 0 || x1 === w - 1 || y1 === h - 1 || n < 0.04 * w * h) return null;
+  return [x0 / w, y0 / h, (x1 + 1 - x0) / w, (y1 + 1 - y0) / h];
+}
+
 /** The tracing copy: rendered at `scale` px per unit, every opaque pixel snapped to exactly one palette color, the rest clear. */
 export async function traceCopy(svg: string, palette: PaletteColor[], scale: number): Promise<Buffer> {
   const { data, info } = await sharp(Buffer.from(svg), { density: 72 * scale, unlimited: true, limitInputPixels: 400_000_000 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });

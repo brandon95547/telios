@@ -51,8 +51,8 @@ async function ingest(designId: string) {
     await originalCrop(dir, analysis);
     updateDesign(designId, (d) => { d.status = 'reading'; d.size = analysis.size; });
     send({ type: 'design', designId });
-    const { reading, error } = await readDesign(path.join(dir, 'view.png'), analysis);
-    writeJson(path.join(dir, 'reading.json'), { reading, error: error ?? null, at: new Date().toISOString() });
+    const { reading, usage, error } = await readDesign(path.join(dir, 'view.png'), analysis);
+    writeJson(path.join(dir, 'reading.json'), { reading, usage, error: error ?? null, at: new Date().toISOString() });
     updateDesign(designId, (d) => { d.reading = reading; d.status = 'ready'; if (error) d.error = `Read from measurements only: ${error}`; });
   } catch (e) {
     updateDesign(designId, (d) => { d.status = 'failed'; d.error = (e as Error).message; });

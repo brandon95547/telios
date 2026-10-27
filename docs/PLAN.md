@@ -182,8 +182,17 @@ Done means:
    halves and corners averaged, 15 copies of each edge's unit, page number left out, fit check
    seamless), a shaded frame (GILL p0032: four-way averaged, five flat grays that take the
    material looks) and a full-color frame (CHAR p0038: four-way averaged; its hand-drawn roses
-   vary, so they stay as drawn). Re-illustration with DeepSeek is tested end to end against a
-   local stand-in for its API; a live run waits on a key.
+   vary, so they stay as drawn). Re-illustration with DeepSeek Flash, live, at 6 renders each:
+
+   | Design | DeepSeek's reading | Re-illustration | Cost (peak rates) |
+   |---|---|---|---|
+   | DOVB p0097, one-ink diamond chain | right, page number named to leave out | clean and exact, 4 renders then finished; a simpler chain than the print's interlace | $0.06 |
+   | CHAR p0038, full-color roses | right | recognizably the same frame, window right; garland sparser, roses blobbier | $0.09 |
+   | GILL p0032, shaded baroque | right (shaded, neutral, gilded wood) | the parts without the structure: scrolls float apart, the three-lobed window became one cartouche; Rebuild is better here | $0.13 |
+
+   DeepSeek reads designs well and follows the loop (close-ups, revisions, the checks' warnings);
+   its drawing is the limit on complex ornament. It once spent a whole reply thinking without
+   drawing; the loop now asks it to draw at low effort and goes on.
 
 ---
 
@@ -204,8 +213,10 @@ Done means:
   corners from its edges' units where the scan's corner is damaged; read hatching's direction to
   draw a relief's shading as bands rather than blobs; and offer the rebuilt result as the model's
   starting point, so a cheap model refines rather than draws from nothing.
-- Compare cheap vision models on the evaluation set (DeepSeek Flash, Gemini Flash on its free
-  tier, a local Qwen-VL in Ollama) to choose the default by result, not price alone.
+- Compare cheap vision models on the evaluation set (DeepSeek Flash, DeepSeek V4 Pro, Gemini
+  Flash on its free tier, a local Qwen-VL in Ollama) to choose the default by result, not price
+  alone. DeepSeek Flash's weak spot is complex ornament (the GILL frame); starting it from the
+  Rebuild result is the first thing to try.
 - Exact layers by boolean geometry (Paper.js or Clipper) instead of tracing, as an option.
 - An evaluation set (designs with approved results) to tune prompts, effort and render
   budgets, and to catch regressions.

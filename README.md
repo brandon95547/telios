@@ -49,7 +49,9 @@ It uses `deepseek-flash` (`DEEPSEEK_MODEL` to change it). Other providers work t
 | `custom` | `TELIOS_API_KEY` | any OpenAI-compatible endpoint at `TELIOS_BASE_URL` |
 
 The header shows whether the model answers. Each re-illustration shows what it cost, at the
-provider's higher (peak) rate where Telios knows it.
+provider's higher (peak) rate where Telios knows it: with DeepSeek Flash, about 5 to 15 cents for
+six renders. Its drawing is good on geometric and simple floral designs and weak on complex
+ornament, where Rebuild often does better.
 
 Other settings (all optional, in the shell or `.env`): `TELIOS_EFFORT` (`low`, `medium` or
 `high`, default `high`), `TELIOS_MAX_RENDERS` (default 8), `TELIOS_DRAW_CONCURRENCY` (default 2),
