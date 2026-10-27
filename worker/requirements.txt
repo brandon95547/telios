@@ -1,0 +1,5 @@
+numpy>=1.26
+scipy>=1.11
+pillow>=10.0
+vtracer>=0.6.11
+pymupdf>=1.24
