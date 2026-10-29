@@ -16,6 +16,10 @@ function saved(): { options: RestyleOptions; batchAll: boolean; subfolders: bool
   }
 }
 
+// What an upload skipped because the same picture was already there.
+const skipped = (names: string[] = []) => (names.length
+  ? `Already added, so skipped: ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` and ${names.length - 6} more` : ''}.`
+  : '');
 const toggled = (set: Set<string>, id: string) => { const n = new Set(set); if (!n.delete(id)) n.add(id); return n; };
 const busyResult = (r: RestyleResult) => r.status === 'queued' || r.status === 'running';
 
@@ -41,6 +45,7 @@ export function Studio({ health }: { health: Health | null }) {
   const [kept, setKept] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState<number | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
+  const [notice, setNotice] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
   const [over, setOver] = useState(false);
   const [working, setWorking] = useState(false);
@@ -75,9 +80,11 @@ export function Studio({ health }: { health: Health | null }) {
     if (!files.length) return;
     setUploading(0);
     setMessages([]);
+    setNotice('');
     try {
       const res = await restyle.upload(files, paths, setUploading);
       setMessages(res.errors);
+      setNotice(skipped(res.duplicates));
     } catch (e) {
       setMessages([(e as Error).message]);
     } finally {
@@ -100,7 +107,11 @@ export function Studio({ health }: { health: Health | null }) {
   const act = async (fn: () => Promise<unknown>) => {
     setWorking(true);
     setMessages([]);
-    try { await fn(); } catch (e) { setMessages([(e as Error).message]); } finally { setWorking(false); load(); }
+    setNotice('');
+    try {
+      const res: any = await fn();
+      if (res?.duplicates) setNotice(skipped(res.duplicates));
+    } catch (e) { setMessages([(e as Error).message]); } finally { setWorking(false); load(); }
   };
 
   const ready = inputs.filter((i) => i.status === 'ready');
@@ -154,6 +165,7 @@ export function Studio({ health }: { health: Health | null }) {
       <div className="work">
         {over && <div className="drop-veil">Drop to add these pictures</div>}
         {messages.length > 0 && <div className="errors" role="alert">{messages.map((m) => <p key={m}>{m}</p>)}</div>}
+        {notice && <div className="notice" role="status">{notice}</div>}
         {uploading !== null && <div className="pending"><div className="spinner" />Uploading… {Math.round(uploading * 100)}%{uploading > 0.99 ? ' (opening it)' : ''}</div>}
 
         {!inputs.length ? (

@@ -51,9 +51,9 @@ export const restyle = {
     const form = new FormData();
     for (const f of files) form.append('files', f);
     if (paths) form.append('paths', JSON.stringify(paths));
-    return send<{ inputs: RestyleInput[]; errors: string[] }>('/api/restyle/inputs', form, onProgress);
+    return send<{ inputs: RestyleInput[]; errors: string[]; duplicates: string[] }>('/api/restyle/inputs', form, onProgress);
   },
-  fromDesigns: (ids: string[]) => post<{ inputs: RestyleInput[]; errors: string[] }>('/api/restyle/inputs/from-designs', { ids }),
+  fromDesigns: (ids: string[]) => post<{ inputs: RestyleInput[]; errors: string[]; duplicates: string[] }>('/api/restyle/inputs/from-designs', { ids }),
   deleteInputs: (ids: string[]) => post<{ deleted: number }>('/api/restyle/inputs/delete', { ids }),
   start: (inputIds: string[], options: RestyleOptions) => post<{ results: RestyleResult[] }>('/api/restyle/results', { inputIds, options }),
   stop: (ids: string[]) => post<{ stopped: number }>('/api/restyle/results/stop', { ids }),

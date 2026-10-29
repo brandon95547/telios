@@ -150,3 +150,78 @@ test('Telios\'s own ComfyUI: the upload\'s name in the workflow, the picture bac
   assert.equal(missing.ready, false);
   assert.match(missing.detail, /other\.safetensors/);
 });
+
+// ── The same picture is not added twice ──
+
+const sharp = (await import('sharp')).default;
+const express = (await import('express')).default;
+const { restyleRoutes } = await import('../src/restyle/routes.ts');
+const { getInput, inputDir, saveInput, listInputs } = await import('../src/restyle/store.ts');
+
+const png = (color: string) => sharp({ create: { width: 12, height: 12, channels: 3, background: color } }).png().toBuffer();
+
+async function withApp<T>(run: (post: (files: [string, Buffer][]) => Promise<any>, remove: (ids: string[]) => Promise<any>) => Promise<T>) {
+  const prepared: string[] = [];
+  const app = express();
+  app.use(express.json());
+  app.use('/api/restyle', restyleRoutes((m) => { if (m.type === 'prepare') prepared.push(m.inputId); }));
+  const server = await new Promise<http.Server>((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/restyle`;
+  try {
+    return await run(
+      async (files) => {
+        const form = new FormData();
+        for (const [name, bytes] of files) form.append('files', new Blob([new Uint8Array(bytes)]), name);
+        const res = await fetch(`${base}/inputs`, { method: 'POST', body: form });
+        return { status: res.status, ...(await res.json()) };
+      },
+      async (ids) => (await fetch(`${base}/inputs/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) })).json(),
+    );
+  } finally {
+    server.close();
+  }
+}
+
+test('the same picture dropped again is skipped, whatever it is called', async () => {
+  const red = await png('#cc2222'), blue = await png('#2222cc');
+  await withApp(async (post, remove) => {
+    const first = await post([['frame.png', red]]);
+    assert.equal(first.inputs.length, 1);
+    assert.deepEqual(first.duplicates, []);
+    assert.equal(first.inputs[0].hash.length, 64);
+
+    const again = await post([['frame.png', red]]);
+    assert.equal(again.status, 201);                  // nothing wrong, nothing new
+    assert.deepEqual([again.inputs.length, again.duplicates], [0, ['frame']]);
+    const renamed = await post([['copy of frame.png', red]]);
+    assert.deepEqual([renamed.inputs.length, renamed.duplicates], [0, ['copy of frame']]);
+
+    const other = await post([['frame.png', blue]]);   // same name, other picture: kept
+    assert.equal(other.inputs.length, 1);
+
+    // two of the same in one drop: one is added, the other skipped
+    const green = await png('#22cc22');
+    const both = await post([['a.png', green], ['b.png', green]]);
+    assert.deepEqual([both.inputs.length, both.duplicates], [1, ['b']]);
+    assert.equal(listInputs().length, 3);
+
+    // gone from the inputs, it can be added again
+    await remove([first.inputs[0].id]);
+    const back = await post([['frame.png', red]]);
+    assert.equal(back.inputs.length, 1);
+  });
+});
+
+test('a picture added before hashes were kept is still recognized, and gets its hash', async () => {
+  const yellow = await png('#cccc22');
+  const id = 'ilegacy1';
+  fs.mkdirSync(inputDir(id), { recursive: true });
+  fs.writeFileSync(path.join(inputDir(id), 'original.png'), yellow);
+  saveInput({ id, name: 'old upload', folder: '', createdAt: '2026-10-01T00:00:00.000Z', status: 'ready', format: 'png' });
+  assert.equal(getInput(id)?.hash, undefined);
+  await withApp(async (post) => {
+    const res = await post([['again.png', yellow]]);
+    assert.deepEqual([res.inputs.length, res.duplicates], [0, ['again']]);
+  });
+  assert.equal(getInput(id)?.hash?.length, 64);
+});

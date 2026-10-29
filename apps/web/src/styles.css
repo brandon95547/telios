@@ -50,6 +50,7 @@ button.link { border: 0; background: none; padding: 0; color: var(--deep-2); tex
 .drop-hint { color: var(--soft); font-size: 13.5px; }
 .errors { color: var(--bad); background: #fbefed; border: 1px solid #efcfca; border-radius: var(--radius); padding: 8px 14px; margin: 14px 0; }
 .errors p { margin: 4px 0; }
+.notice { color: var(--deep); background: #e9f1ef; border: 1px solid #c5d9d4; border-radius: var(--radius); padding: 8px 14px; margin: 14px 0; font-size: 14px; }
 .empty { color: var(--soft); text-align: center; margin: 40px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin-top: 22px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; text-decoration: none; color: inherit; display: flex; flex-direction: column; transition: box-shadow 0.15s, transform 0.15s; }

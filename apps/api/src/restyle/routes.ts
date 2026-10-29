@@ -13,6 +13,7 @@ import { cleanOptions, findStyle, findTheme, typeInfo, type OutputFormat, type R
 import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
 import type { ToWorker } from '../worker/main.ts';
+import { fileHash, knownHashes } from './duplicates.ts';
 import { getInput, getResult, inputDir, listInputs, listResults, newInputId, newResultId, removeInput, removeResult, resultDir, saveInput, saveResult } from './store.ts';
 
 /** What an upload may be, by extension; a zip is opened, a PDF taken page by page. */
@@ -45,25 +46,43 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
   const router = express.Router();
   const upload = multer({ dest: fs.mkdtempSync(path.join(os.tmpdir(), 'telios-restyle-')), limits: { fileSize: 2 * 1024 ** 3, files: 1000 } });
 
-  function addInput(name: string, folder: string, file: string, format: string): RestyleInput {
-    const id = newInputId();
-    fs.mkdirSync(inputDir(id), { recursive: true });
-    fs.copyFileSync(file, path.join(inputDir(id), `original.${format}`));
-    const input: RestyleInput = { id, name: cleanName(name), folder: cleanFolder(folder), createdAt: new Date().toISOString(), status: 'preparing', format };
-    saveInput(input);
-    toWorker({ type: 'prepare', inputId: id });
-    return input;
+  /** What one request has done so far: the inputs it made, what went wrong, and the pictures it
+   * skipped because the same picture (by content) was already added, by this request or before. */
+  interface Intake { created: RestyleInput[]; errors: string[]; duplicates: string[]; seen: Map<string, string> }
+  const intake = async (): Promise<Intake> => ({ created: [], errors: [], duplicates: [], seen: await knownHashes() });
+
+  // Requests that overlap would each miss what the other is adding: claim a hash before the copy.
+  const claimed = new Set<string>();
+
+  async function addInput(name: string, folder: string, file: string, format: string, it: Intake) {
+    const hash = await fileHash(file);
+    const had = it.seen.get(hash);
+    if (had !== undefined || claimed.has(hash)) { it.duplicates.push(cleanName(name)); return; }
+    claimed.add(hash);
+    try {
+      const id = newInputId();
+      fs.mkdirSync(inputDir(id), { recursive: true });
+      fs.copyFileSync(file, path.join(inputDir(id), `original.${format}`));
+      const input: RestyleInput = { id, name: cleanName(name), folder: cleanFolder(folder), createdAt: new Date().toISOString(), status: 'preparing', format, hash };
+      saveInput(input);
+      it.seen.set(hash, input.name);
+      it.created.push(input);
+      toWorker({ type: 'prepare', inputId: id });
+    } finally {
+      claimed.delete(hash);
+    }
   }
 
   /** One uploaded file as inputs: a picture is one, a zip each picture in it, a PDF each page. */
-  async function take(file: string, original: string, folder: string, created: RestyleInput[], errors: string[]) {
+  async function take(file: string, original: string, folder: string, it: Intake) {
+    const { errors } = it;
     const ext = path.extname(original).slice(1).toLowerCase();
     const base = path.basename(original, path.extname(original));
     if (ext === 'zip') {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-zip-'));
       try {
         const { files, skipped } = await python<{ files: { file: string; name: string; folder: string }[]; skipped: number }>(['unzip', file, tmp], 15 * 60_000);
-        for (const f of files) await take(f.file, f.name, [folder, base, f.folder].filter(Boolean).join('/'), created, errors);
+        for (const f of files) await take(f.file, f.name, [folder, base, f.folder].filter(Boolean).join('/'), it);
         if (!files.length) errors.push(`${original}: no pictures inside.`);
         else if (skipped) errors.push(`${original}: ${skipped} file${skipped === 1 ? '' : 's'} that are not pictures were left out.`);
       } finally {
@@ -73,13 +92,13 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-pdf-'));
       try {
         const { pages, total } = await python<{ pages: { page: number; file: string }[]; total: number }>(['pdfpages', file, tmp, '--max', String(MAX_PDF_PAGES)]);
-        for (const p of pages) created.push(addInput(total > 1 ? `${base} p${p.page}` : base, folder, p.file, 'png'));
+        for (const p of pages) await addInput(total > 1 ? `${base} p${p.page}` : base, folder, p.file, 'png', it);
         if (total > pages.length) errors.push(`${original}: only the first ${pages.length} of ${total} pages were taken.`);
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     } else if (PICTURES.has(ext)) {
-      created.push(addInput(base, folder, file, ext === 'jpeg' ? 'jpg' : ext === 'tif' ? 'tiff' : ext));
+      await addInput(base, folder, file, ext === 'jpeg' ? 'jpg' : ext === 'tif' ? 'tiff' : ext, it);
     } else {
       errors.push(`${original}: not a picture Telios takes (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF or a zip of them).`);
     }
@@ -92,31 +111,31 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     // a dropped folder sends each file's path inside it, in order
     let paths: string[] = [];
     try { paths = JSON.parse(String(req.body?.paths ?? '[]')); } catch { /* none */ }
-    const created: RestyleInput[] = [];
-    const errors: string[] = [];
+    const it = await intake();
     for (const [n, file] of files.entries()) {
       const where = typeof paths[n] === 'string' ? path.posix.dirname(paths[n]) : '';
       try {
-        await take(file.path, file.originalname, where === '.' ? '' : where, created, errors);
+        await take(file.path, file.originalname, where === '.' ? '' : where, it);
       } catch (e) {
-        errors.push(`${file.originalname}: ${(e as Error).message}`);
+        it.errors.push(`${file.originalname}: ${(e as Error).message}`);
       } finally {
         fs.rmSync(file.path, { force: true });
       }
     }
-    res.status(created.length || !files.length ? 201 : 400).json({ inputs: created, errors });
+    // all of it already added is no failure: nothing was wrong, there was just nothing new
+    res.status(it.created.length || it.duplicates.length || !files.length ? 201 : 400).json({ inputs: it.created, errors: it.errors, duplicates: it.duplicates });
   }));
 
   // Designs already in Telios (the vector redraw's library), added as inputs.
-  router.post('/inputs/from-designs', (req, res) => {
-    const created: RestyleInput[] = [];
+  router.post('/inputs/from-designs', wrap(async (req, res) => {
+    const it = await intake();
     for (const id of ids(req.body?.ids)) {
       const d = getDesign(id);
       if (!d) continue;
-      created.push(addInput(d.name, '', path.join(designDir(id), d.original.file), path.extname(d.original.file).slice(1).toLowerCase()));
+      await addInput(d.name, '', path.join(designDir(id), d.original.file), path.extname(d.original.file).slice(1).toLowerCase(), it);
     }
-    res.status(201).json({ inputs: created, errors: [] });
-  });
+    res.status(201).json({ inputs: it.created, errors: it.errors, duplicates: it.duplicates });
+  }));
 
   router.post('/inputs/delete', (req, res) => {
     const gone = ids(req.body?.ids).filter((id) => getInput(id));

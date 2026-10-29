@@ -98,6 +98,8 @@ export interface RestyleInput {
   originalSize?: [number, number];
   /** What it shows, in a phrase: read by the model when one is set up, else from its name. */
   subject?: string;
+  /** SHA-256 of the picture as added, so the same picture is not added twice. */
+  hash?: string;
 }
 
 export type ResultStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
