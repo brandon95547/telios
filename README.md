@@ -147,3 +147,18 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 A release: `git pull`, then the same command again.
 
+### Through a tunnel
+
+Telios listens on the server's 127.0.0.1 only, so before nginx and a domain are set up (or to
+reach it without them), open an SSH tunnel from your own computer and use it as if it ran there:
+
+```bash
+ssh -N -L 5178:127.0.0.1:5178 you@your-server
+```
+
+Leave that running and open http://localhost:5178. The first visit asks for the setup code
+(`grep TELIOS_SETUP_CODE .env` in Telios's folder on the server), then the name and password you
+choose; the account is the same one the domain uses later. Ctrl+C closes the tunnel. If 5178 is
+taken on your computer, use another port on the left: `-L 5200:127.0.0.1:5178`, then
+http://localhost:5200.
+
