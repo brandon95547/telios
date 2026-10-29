@@ -53,7 +53,7 @@ export function DesignPage({ id, health }: { id: string; health: Health | null }
   };
   const remove = async () => {
     if (!confirm(`Delete “${design.name}” and all its runs? This can't be undone.`)) return;
-    try { await api.remove(design.id); location.hash = '#/'; } catch (e) { setError((e as Error).message); }
+    try { await api.remove(design.id); location.hash = '#/designs'; } catch (e) { setError((e as Error).message); }
   };
 
   const run = runs.find((r) => r.id === selected) ?? null;
@@ -62,7 +62,7 @@ export function DesignPage({ id, health }: { id: string; health: Health | null }
   return (
     <div className="design">
       <div className="design-head">
-        <a href="#/" className="back">← All designs</a>
+        <a href="#/designs" className="back">← All designs</a>
         <h1 onClick={rename} title="Rename">{design.name}</h1>
         <span className="spacer" />
         <button className="quiet" onClick={remove}>Delete</button>

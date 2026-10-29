@@ -12,8 +12,12 @@ import { originalCrop } from '../engine/render.ts';
 import { reillustrate, isCanceled } from '../engine/draw.ts';
 import { finishDrawing, finishRebuild, finishTrace } from '../engine/finish.ts';
 import type { Reading, Run, RunEvent } from '@telios/shared';
+import { prepareInput } from '../restyle/prepare.ts';
+import { drawResult } from '../restyle/job.ts';
+import { getResult, listInputs, listResults, updateResult } from '../restyle/store.ts';
 
-export type ToWorker = { type: 'ingest'; designId: string } | { type: 'run'; runId: string } | { type: 'cancel'; runId: string };
+export type ToWorker = { type: 'ingest'; designId: string } | { type: 'run'; runId: string } | { type: 'cancel'; runId: string }
+  | { type: 'prepare'; inputId: string } | { type: 'restyle'; resultId: string } | { type: 'stop'; resultIds: string[] };
 export type FromWorker = { type: 'design'; designId: string } | { type: 'event'; runId: string; event: RunEvent } | { type: 'ready' };
 
 const send = (m: FromWorker) => process.send?.(m);
@@ -36,6 +40,19 @@ const ingestQueue = new Queue(3);
 const runQueue = new Queue(DRAW_CONCURRENCY);
 const traceQueue = new Queue(2);
 const controllers = new Map<string, AbortController>();
+// Restyle: uploads made ready a few at a time; results drawn one at a time (one GPU, shared).
+const prepareQueue = new Queue(3);
+const restyleQueue = new Queue(1);
+const drawing = new Map<string, AbortController>();
+
+function restyle(resultId: string) {
+  restyleQueue.push(async () => {
+    if (getResult(resultId)?.status !== 'queued') return;   // stopped or deleted while it waited
+    const controller = new AbortController();
+    drawing.set(resultId, controller);
+    try { await drawResult(resultId, controller.signal); } finally { drawing.delete(resultId); }
+  });
+}
 
 // ── Upload → measurements → reading ──
 
@@ -112,7 +129,15 @@ async function runJob(runId: string) {
 }
 
 process.on('message', (m: ToWorker) => {
-  if (m.type === 'ingest') ingestQueue.push(() => ingest(m.designId));
+  if (m.type === 'prepare') prepareQueue.push(() => prepareInput(m.inputId));
+  else if (m.type === 'restyle') restyle(m.resultId);
+  else if (m.type === 'stop') {
+    for (const id of m.resultIds) {
+      const c = drawing.get(id);
+      if (c) c.abort();
+      else if (getResult(id)?.status === 'queued') updateResult(id, (r) => { r.status = 'canceled'; r.finishedAt = new Date().toISOString(); });
+    }
+  } else if (m.type === 'ingest') ingestQueue.push(() => ingest(m.designId));
   else if (m.type === 'run') {
     const run = getRun(m.runId);
     (run?.mode === 'reillustrate' ? runQueue : traceQueue).push(() => runJob(m.runId));
@@ -146,6 +171,13 @@ for (const d of listDesigns()) {
       appendEvent(run, { type: 'status', status: 'interrupted', stage: run.stage, message: run.error });
     }
   }
+}
+// Restyle's work, picked up again: an upload being made ready is made ready; a result being
+// drawn is drawn again, from the start, in its turn.
+for (const i of listInputs()) if (i.status === 'preparing') prepareQueue.push(() => prepareInput(i.id));
+for (const r of listResults().reverse()) {
+  if (r.status === 'running') updateResult(r.id, (x) => { x.status = 'queued'; delete x.stage; });
+  if (r.status === 'running' || r.status === 'queued') restyle(r.id);
 }
 fs.mkdirSync(path.dirname(designDir('x')), { recursive: true });
 send({ type: 'ready' });

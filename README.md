@@ -1,6 +1,15 @@
 # Telios
 
-Telios takes a picture of an existing design (a frame, a border, a corner, an ornament, a pattern
+Telios has two tools.
+
+**Restyle** (the home page) redraws pictures (clip art, frames, ornaments, icons, anything) with
+ComfyUI in the look you choose: clip art, line art, a 2D illustration or a 3D illustration, in one
+of Talari's art styles (and a medium, for 2D illustrations) and one of its themes. Add one picture,
+several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
+results come back in a grid to tick, download as a zip (in folders by type, style and theme), or
+delete. Clip art and line art come as SVG too.
+
+**Vector redraw** takes a picture of an existing design (a frame, a border, a corner, an ornament, a pattern
 tile, an initial) and redraws it as clean vector art, with one layer per color, colored by a clear
 rule, and for frames and borders the data that fits it to any page size by repeating units.
 
@@ -25,6 +34,31 @@ Then open http://localhost:5178. The first run installs the npm packages and a P
 
 `npm run dev` runs the same with hot reload (web on http://localhost:5179). `npm test` runs the
 unit tests.
+
+### Restyle and ComfyUI
+
+Restyle draws with FLUX.1 Dev on ComfyUI, image to image: each picture is redrawn from part of the
+way, so it keeps its shape (Follow the original: closely, balanced or loosely). A scan's gray or
+yellowed paper is made white first. Telios builds every workflow itself and keeps every result;
+ComfyUI is only lent the work. Where it runs is one setting in `.env`:
+
+- **Beside a Phansora API** (`COMFYUI_API_URL`, `COMFYUI_API_TOKEN`): that server's ComfyUI and its
+  models, through its gateway (`/talari/users/<id>/comfyui`, open to the accounts in its
+  `TALARI_LAB_USERS`). Telios installs and downloads nothing.
+- **A ComfyUI already running** (`COMFYUI_URL`), with the ComfyUI-GGUF loader and FLUX's files.
+- **Neither: standalone.** `npm start` installs Telios's own ComfyUI into `comfyui/` and fetches its
+  models once (about 12 GB; `npm run comfyui` does only that), then starts it on 127.0.0.1:8189.
+  It wants an NVIDIA GPU; a Mac draws with Metal, slowly.
+
+The header says whether ComfyUI is ready. With a background removal model (BiRefNet), 2D and 3D
+illustrations are cut out of their background; without one, a plain background is made clear by
+color. With an upscaling model (4x-UltraSharp), Enhance details enlarges with detail. On an
+NVIDIA A4000 a picture takes about 30 seconds, and the first after a pause about a minute more
+(the models are loaded again).
+
+Talari's choices (art styles, substyles, mediums, themes, and the words FLUX is given for each)
+are kept in `packages/shared/src/catalog.ts`, written from Phansora's own lists by
+`npm run sync:catalog` when `../phansora` and `../phansora-api` are beside this folder.
 
 ### A model
 
@@ -85,14 +119,31 @@ its hatching. Those are where re-illustration earns its cost.
 ## How it's built
 
 ```
-apps/web         React + Vite: library, reading, live runs, review, downloads
+apps/web         React + Vite: Restyle, the library, reading, live runs, review, downloads
 apps/api         Express API + a forked job worker (queue, model loop, rendering)
+  src/restyle    Restyle: inputs and results on disk, preparing uploads, the job, its routes
+  src/comfy      ComfyUI, through a Phansora API or directly, and the workflows Restyle runs
   src/engine     reading, the model client, the drawing loop, checks, the drawing library, the brief
   src/sandbox    runs each model-written program in a locked-down Node process
-packages/shared  types, the page-fitting algorithm, material looks
-worker           Python: measuring uploads, Rebuild, exact-palette vectorizing, tracing
+  src/auth.ts    signing in, for a public address
+packages/shared  types, Restyle's choices and Talari's catalog, the page-fitting algorithm, material looks
+worker           Python: measuring uploads, Rebuild, exact-palette vectorizing, tracing, zips, EPS
+docker/comfyui   Telios's own ComfyUI image and model fetcher, for standalone
 docs/PLAN.md     architecture, the MVP, what comes next
 ```
 
 Uploads and results live in `data/` (git-ignored). See [docs/PLAN.md](docs/PLAN.md) for the
 pipeline stage by stage, the sandbox, and later phases.
+
+## On a server
+
+`docker-compose.prod.yml` runs Telios in Docker on 127.0.0.1:5178, for nginx in front; its data
+stays in `./data`. On a public address, set `TELIOS_SETUP_CODE` in `.env`: the first visit asks for
+it and makes the one account (a name and a password); every visit after that signs in.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+A release: `git pull`, then the same command again.
+

@@ -5,13 +5,18 @@
 //   npm start            http://localhost:5178
 //   npm run dev          the same with hot reload (web on http://localhost:5179)
 //   npm run setup        install only
+//
+// Without COMFYUI_API_URL or COMFYUI_URL in .env, Restyle's ComfyUI is installed and started
+// too (scripts/comfyui.mjs): about 12 GB of models the first time.
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureComfyUI, startComfyUI } from './comfyui.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+if (fs.existsSync(path.join(ROOT, '.env'))) process.loadEnvFile(path.join(ROOT, '.env'));
 const args = new Set(process.argv.slice(2));
 const dev = args.has('--dev');
 const say = (m) => console.log(`\x1b[36mtelios\x1b[0m ${m}`);
@@ -50,6 +55,13 @@ if (!process.env.DEEPSEEK_API_KEY && !process.env.TELIOS_PROVIDER && !fs.existsS
   say('no model set up: Rebuild and Trace work; re-illustration needs one (see README: "A model").');
 }
 
+// Restyle draws with ComfyUI: a Phansora API's (COMFYUI_API_URL), one already running
+// (COMFYUI_URL), or, with neither, Telios's own, installed and started here.
+const ownComfyUI = !process.env.COMFYUI_API_URL && !process.env.COMFYUI_URL;
+if (ownComfyUI) {
+  try { ensureComfyUI(); } catch (e) { console.error(`\nComfyUI could not be set up: ${e.message}. Restyle needs it; the rest of Telios works.`); }
+}
+
 const children = [];
 const start = (cmd, argv, opts = {}) => {
   const c = spawn(cmd, argv, { cwd: ROOT, stdio: 'inherit', ...opts });
@@ -58,6 +70,7 @@ const start = (cmd, argv, opts = {}) => {
   return c;
 };
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { children.forEach((c) => c.kill(sig)); process.exit(0); });
+if (ownComfyUI && fs.existsSync(path.join(ROOT, 'comfyui', '.installed'))) children.push(startComfyUI());
 
 if (dev) {
   start(process.execPath, ['--import', 'tsx', '--watch-path=apps/api/src', '--watch-path=packages/shared/src', 'apps/api/src/server.ts']);

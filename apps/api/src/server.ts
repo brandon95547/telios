@@ -11,12 +11,15 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import multer from 'multer';
 import { KINDS } from '@telios/shared';
 import type { Design, Reading, Run, RunEvent } from '@telios/shared';
-import { DATA, DRAW_EFFORT, MAX_RENDERS, PORT, PYTHON, WEB_DIST } from './config.ts';
+import { DATA, DRAW_EFFORT, HOST, MAX_RENDERS, PORT, PYTHON, WEB_DIST } from './config.ts';
 import { dataFile, designDir, getDesign, getRun, listDesigns, newId, readEvents, readJson, runIdFor, saveDesign, saveRun, updateDesign, writeJson, appendEvent } from './store.ts';
 import { python } from './python.ts';
 import { modelHealth, provider } from './engine/llm.ts';
 import { exportRun, parseColors, type Format } from './export.ts';
 import type { FromWorker, ToWorker } from './worker/main.ts';
+import { comfy } from './comfy/client.ts';
+import { restyleRoutes } from './restyle/routes.ts';
+import { authRoutes, requireSession } from './auth.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,15 +42,24 @@ const toWorker = (m: ToWorker) => worker.send(m);
 // ── App ──
 
 const app = express();
+app.set('trust proxy', 'loopback');   // nginx in front: the visitor's address and https come from it
 app.use(express.json({ limit: '2mb' }));
+app.use('/api/auth', authRoutes());
+app.use(['/api', '/files'], requireSession);
 const upload = multer({ dest: fs.mkdtempSync(path.join(os.tmpdir(), 'telios-upload-')), limits: { fileSize: 80 * 1024 * 1024, files: 30 } });
 const wrap = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 
 const ACCEPT: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.pdf': 'application/pdf', '.gif': 'image/gif', '.bmp': 'image/bmp' };
 
 app.get('/api/health', wrap(async (req, res) => {
-  const model = await modelHealth(req.query.force === '1');
-  res.json({ ok: true, effort: DRAW_EFFORT, maxRenders: MAX_RENDERS, model: { ok: model.ok, provider: model.provider, label: model.label, name: model.model, error: model.error }, python: fs.existsSync(PYTHON) });
+  const force = req.query.force === '1';
+  const [model, drawing] = await Promise.all([modelHealth(force), comfy().info(force)]);
+  res.json({
+    ok: true, effort: DRAW_EFFORT, maxRenders: MAX_RENDERS,
+    model: { ok: model.ok, provider: model.provider, label: model.label, name: model.model, error: model.error },
+    comfy: { via: drawing.via, ready: drawing.ready, detail: drawing.detail, model: drawing.flux?.unet ?? '', upscale: drawing.upscalers.length > 0, cutout: !!drawing.backgroundRemoval },
+    python: fs.existsSync(PYTHON),
+  });
 }));
 
 function designSummary(d: Design) {
@@ -226,12 +238,15 @@ app.get('/api/runs/:id/export', wrap(async (req, res) => {
   res.send(out.body);
 }));
 
+app.use('/api/restyle', restyleRoutes(toWorker));
+
 // Stored files (uploads, renders, results), by their path inside the data folder.
 app.get('/files/{*rest}', (req, res) => {
   const relPath = (req.params as any).rest?.join?.('/') ?? '';
   const file = dataFile(relPath);
   if (!file) return res.status(404).end();
-  res.setHeader('Cache-Control', 'no-cache');
+  // Restyle's screen copies never change once made (each input and result has its own folder)
+  res.setHeader('Cache-Control', /^restyle\/.+\.webp$/.test(relPath) ? 'private, max-age=31536000, immutable' : 'no-cache');
   if (file.endsWith('.svg')) res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
   res.sendFile(file);
 });
@@ -248,7 +263,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 });
 
 startWorker();
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, HOST, () => {
   console.log(`Telios is running at http://localhost:${PORT}  (data: ${DATA})`);
 });
 

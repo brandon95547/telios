@@ -13,6 +13,8 @@
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
     "setup": "node scripts/start.mjs --setup-only",
+    "comfyui": "node scripts/comfyui.mjs",
+    "sync:catalog": "node scripts/sync-catalog.mjs",
     "test": "node --import tsx --test packages/shared/test/*.test.ts apps/api/test/*.test.ts && .venv/bin/python -m unittest discover -s worker/tests -t worker",
     "typecheck": "tsc -p apps/api && tsc -p apps/web && tsc -p packages/shared"
   },

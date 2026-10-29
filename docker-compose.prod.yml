@@ -1,0 +1,51 @@
+# Telios on a server.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# With COMFYUI_API_URL in .env (Telios beside a Phansora API, e.g. http://127.0.0.1:8000/talari),
+# that API's ComfyUI draws and nothing else starts. Without it, Telios runs standalone: switch on
+# its own ComfyUI once with COMPOSE_PROFILES=comfyui in .env. Its image is about 10 GB, and on
+# first start it fetches about 12 GB of model files into COMFYUI_DATA; it needs an NVIDIA GPU
+# (the NVIDIA Container Toolkit).
+#
+# Telios shares the host's network, so it reaches a Phansora API or its ComfyUI on 127.0.0.1,
+# and listens on 127.0.0.1:5178 only, for nginx in front.
+
+services:
+  app:
+    build: .
+    image: telios-app
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      HOST: 127.0.0.1
+      PORT: ${PORT:-5178}
+      TELIOS_DATA: /app/data
+    volumes:
+      - ./data:/app/data
+
+  comfyui:
+    profiles: ["comfyui"]
+    build:
+      context: docker/comfyui
+      args:
+        COMFYUI_REF: ${COMFYUI_REF:-v0.39.0}
+        COMFYUI_GGUF_REF: ${COMFYUI_GGUF_REF:-6ea2651e7df66d7585f6ffee804b20e92fb38b8a}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu126}
+    image: telios-comfyui
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PUID: ${COMFYUI_PUID:-1000}
+      PGID: ${COMFYUI_PGID:-1000}
+      FLUX_UNET_FILE: flux1-dev-${FLUX_QUANT:-Q4_K_S}.gguf
+      HF_TOKEN: ${HF_TOKEN:-}
+      COMFYUI_ARGS: ${COMFYUI_ARGS:---disable-smart-memory}
+    ports:
+      - "127.0.0.1:8189:8188"
+    volumes:
+      - ${COMFYUI_DATA:-./comfyui}/models:/opt/ComfyUI/models
+      - ${COMFYUI_DATA:-./comfyui}/data:/data

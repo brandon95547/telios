@@ -5,6 +5,12 @@
   vectorize <trace.png> <out-dir> --palette JSON [--width W --height H]
   trace     <source.png> <out-dir> [--palette JSON] [--mode full|neutral|one-ink] [--keep-background]
   rebuild   <crop.png> <out-dir> --reading JSON [--analysis analysis.json]
+  unzip     <zip> <out-dir> [--max-files N] [--max-bytes B]    the pictures in a zip
+  eps       <eps> <out.png> [--longest 2048]                    an EPS drawn as pixels
+  raster    <picture> <out.png>                                 any picture Pillow reads, as PNG
+  whiten    <in.png> <out.png>                                  a scan's paper made white
+  key       <in.png> <out.png> [--ground white|black] [--everything]   a plain background made clear
+  pack      <manifest.json> <out.zip>                           files packed into a zip
 """
 import argparse
 import json
@@ -77,6 +83,29 @@ def main(argv=None):
     r.add_argument('--reading', required=True, help='JSON: the confirmed reading')
     r.add_argument('--analysis', help='analysis.json from ingest')
     r.add_argument('--title', default='Telios')
+    u = sub.add_parser('unzip')
+    u.add_argument('zip')
+    u.add_argument('outdir')
+    u.add_argument('--max-files', type=int, default=1000)
+    u.add_argument('--max-bytes', type=int, default=4_000_000_000)
+    e = sub.add_parser('eps')
+    e.add_argument('source')
+    e.add_argument('out')
+    e.add_argument('--longest', type=int, default=2048)
+    ra = sub.add_parser('raster')
+    ra.add_argument('source')
+    ra.add_argument('out')
+    wh = sub.add_parser('whiten')
+    wh.add_argument('source')
+    wh.add_argument('out')
+    k = sub.add_parser('key')
+    k.add_argument('source')
+    k.add_argument('out')
+    k.add_argument('--ground', default='white', choices=['white', 'black'])
+    k.add_argument('--everything', action='store_true')
+    pk = sub.add_parser('pack')
+    pk.add_argument('manifest')
+    pk.add_argument('out')
     args = ap.parse_args(argv)
 
     try:
@@ -101,6 +130,21 @@ def main(argv=None):
             os.makedirs(args.outdir, exist_ok=True)
             analysis = json.load(open(args.analysis)) if args.analysis else None
             out(rebuild(args.source, args.outdir, json.loads(args.reading), analysis, args.title))
+        elif args.cmd in ('unzip', 'eps', 'raster', 'whiten', 'key', 'pack'):
+            from . import restyle
+            if args.cmd == 'unzip':
+                os.makedirs(args.outdir, exist_ok=True)
+                out(restyle.unzip(args.zip, args.outdir, args.max_files, args.max_bytes))
+            elif args.cmd == 'eps':
+                out(restyle.eps(args.source, args.out, args.longest))
+            elif args.cmd == 'raster':
+                out(restyle.raster(args.source, args.out))
+            elif args.cmd == 'whiten':
+                out(restyle.whiten(args.source, args.out))
+            elif args.cmd == 'key':
+                out(restyle.key(args.source, args.out, args.ground, args.everything))
+            else:
+                out(restyle.pack(json.load(open(args.manifest)), args.out))
     except Exception as e:  # reported to the job worker, which shows it
         import traceback
         traceback.print_exc(file=sys.stderr)
