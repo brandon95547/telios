@@ -11,20 +11,31 @@ import { addUsage, asHistory, chat, imagePart, textPart, type Effort, type Messa
 import { runProgram, drawlibSource } from '../sandbox/run.ts';
 import { checkSvg } from './svg.ts';
 import { closeup, compare, fitCheck, forModel, normalizePalette, offPalette, render, sizeOf, symmetry, unitCheck, windowOf } from './render.ts';
+import { appReady, failures, layoutWarnings } from './appready.ts';
 import { rel } from '../store.ts';
-import type { Checks, Iteration, Layout, PaletteColor, Reading, Run, RunEvent } from '@telios/shared';
+import { classOf, FRAME_MASTER } from '@telios/shared';
+import type { AppReport, Checks, Iteration, Layout, PaletteColor, PieceClass, Reading, Run, RunEvent } from '@telios/shared';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f: string) => fs.readFileSync(path.join(HERE, f), 'utf8');
 
-/** The standing instructions: the brief, the library and two finished programs. Frozen, so the
- * provider's prefix cache serves it again on every turn and run. */
-const SYSTEM = [
-  read('brief.md'),
-  '## The drawing library (already defined in the sandbox)\n\n```js\n' + drawlibSource() + '\n```',
-  '## Example 1: Persian Carpet (frame, full color, square, kept middles)\n\n```js\n' + read('examples/persian-carpet.js') + '\n```',
-  '## Example 2: Renaissance Moresque (frame, one ink with carved lines, portrait, deeper foot)\n\n```js\n' + read('examples/renaissance-moresque.js') + '\n```',
-].join('\n\n');
+/** The standing instructions for a kind of piece: the brief, the notes for that kind, the library and the finished programs.
+ * Each is frozen once made, so the provider's prefix cache serves it again on every turn and run of that kind. */
+const LIBRARY = '## The drawing library (already defined in the sandbox)\n\n```js\n' + drawlibSource() + '\n```';
+const example = (title: string, file: string) => `## ${title}\n\n\`\`\`js\n${read(file)}\n\`\`\``;
+const SYSTEMS = new Map<PieceClass, string>();
+export function systemOf(cls: PieceClass): string {
+  let text = SYSTEMS.get(cls);
+  if (text) return text;
+  const persian = example('Example 1: Persian Carpet (frame, full color, square, kept middles, composed by hand)', 'examples/persian-carpet.js');
+  const moresque = example('Example 2: Renaissance Moresque (frame, one ink with carved lines, portrait, deeper foot)', 'examples/renaissance-moresque.js');
+  text = cls === 'frame'
+    ? [read('brief.md'), read('brief-frame.md'), LIBRARY, example('Example 3: a frame built with frameKit (start here: the layout is made for you)', 'examples/frame-kit.js'), persian,
+      moresque.replace('portrait, deeper foot)', 'portrait, deeper foot: shown for its carved-lines technique only; draw frames on a square master)')].join('\n\n')
+    : [read('brief.md'), ...(cls === 'object' ? [read('brief-object.md')] : []), LIBRARY, persian, moresque].join('\n\n');
+  SYSTEMS.set(cls, text);
+  return text;
+}
 
 const DrawInput = z.object({ program: z.string().min(20), notes: z.string().default('') });
 const ReviseInput = z.object({ edits: z.array(z.object({ old_str: z.string().min(1), new_str: z.string() })).min(1), notes: z.string().default('') });
@@ -88,6 +99,8 @@ export interface Drawing {
   summary: string;
   colorRule: string;
   uncertain: string;
+  /** The final render against the app-ready checks. */
+  appReady?: AppReport;
 }
 
 class Canceled extends Error {}
@@ -114,12 +127,15 @@ async function firstMessage(ctx: DrawContext): Promise<Message> {
   if (analysis?.symmetry) measured.symmetry = analysis.symmetry;
   if (analysis?.palette) measured.measuredColors = analysis.palette.map((p: any) => `${p.hex} ${p.name} (${Math.round(p.share * 100)}%)`);
   const form = ({ frame: 'frame', border: 'border', corner: 'corner', pattern: 'tile' } as Record<string, string>)[r.kind] ?? 'whole';
+  const cls = classOf(r.kind);
   const text = [
     `Redraw this design as new vector art: a ${r.kind}, ${r.rendering === 'shaded' ? 'in shaded relief' : 'flat'}.`,
     `The reading, confirmed by the user:\n${JSON.stringify({ kind: r.kind, rendering: r.rendering, colorMode: r.colorMode, colorReason: r.colorReason, material: r.material, carvedLines: r.carvedLines, symmetry: r.symmetry, repeats: r.repeats, palette: r.palette, structure: r.structure, motifs: r.motifs, style: r.style, leaveOut: r.leaveOut, plan: r.plan }, null, 1)}`,
     `Measured on the scan (rough; trust your eyes where they disagree):\n${JSON.stringify(measured)}`,
     `Color rule: ${r.colorMode === 'neutral' ? `neutral base: draw in grays only (the original's color stands for ${r.material || 'a material'})${r.rendering === 'shaded' ? ', up to 12 grays for the relief' : ''}.` : r.colorMode === 'full' ? 'full color: keep the original\'s palette (at most eight flat colors).' : `one ink${r.carvedLines ? ', with the carved lines in their own color (Ivory #f3e8cf)' : ''}.`}`,
-    `Return layout.form '${form}'. Make the canvas the design's aspect ratio (${(W / H).toFixed(3)}), about 1200–1800 units on the long side.`,
+    cls === 'frame'
+      ? `Return layout.form 'frame', drawn with frameKit. Draw it on a square master, ${FRAME_MASTER} × ${FRAME_MASTER} design units: not the original's shape (its aspect is ${(W / H).toFixed(3)}), so the measurements above are of the original: carry the proportions of its bands and ornaments over, not its canvas.`
+      : `Return layout.form '${form}'. Make the canvas the design's aspect ratio (${(W / H).toFixed(3)}), about 1200–1800 units on the long side${cls === 'object' ? ', with about 3% spare all round' : ''}.`,
     run.options.note ? `The user adds: ${run.options.note}` : '',
     `You have ${run.options.maxRenders} renders. Plan briefly, then call draw.`,
   ].filter(Boolean).join('\n\n');
@@ -130,10 +146,10 @@ async function firstMessage(ctx: DrawContext): Promise<Message> {
 export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
   const { run, emit, signal } = ctx;
   const maxRenders = run.options.maxRenders;
-  const messages: Message[] = [{ role: 'system', content: SYSTEM }, await firstMessage(ctx)];
-  let best: { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null } | null = null;
+  const messages: Message[] = [{ role: 'system', content: systemOf(classOf(run.reading.kind)) }, await firstMessage(ctx)];
+  let best: { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null; report: AppReport } | null = null;
   let attempted = '';      // the last program tried, rendered or not: revise edits it
-  let renders = 0, attempts = 0, nudged = false, overLimit = 0, cutOff = 0;
+  let renders = 0, attempts = 0, nudged = false, overLimit = 0, cutOff = 0, pressed = false;
   let finished: z.infer<typeof FinishInput> | null = null;
 
   emit({ type: 'status', status: 'running', stage: 'plan', message: 'Studying the original' });
@@ -190,10 +206,11 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
   }
 
   // (set inside runTool and renderStep, which TypeScript can't see from here)
-  const result = best as { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null } | null;
+  const result = best as { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null; report: AppReport } | null;
   const done = finished as z.infer<typeof FinishInput> | null;
   if (!result) throw new Error('No drawing rendered without error.');
-  return { ...result, summary: done?.summary ?? 'Stopped after the last render.', colorRule: done?.colorRule ?? '', uncertain: done?.uncertain ?? '' };
+  const { report, ...drawing } = result;
+  return { ...drawing, appReady: report, summary: done?.summary ?? 'Stopped after the last render.', colorRule: done?.colorRule ?? '', uncertain: done?.uncertain ?? '' };
 
   async function runTool(name: string, input: unknown): Promise<ToolOut> {
     const err = (text: string): ToolOut => ({ text: `Error: ${text}` });
@@ -232,6 +249,11 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
       const p = FinishInput.safeParse(input);
       if (!p.success) return err('finish takes { summary, colorRule, uncertain }.');
       if (!best) return err('Nothing has rendered without error yet: draw first.');
+      // a piece that is not app-ready yet is sent back once, while there are renders to fix it with
+      if (!best.report.ok && !pressed && renders < maxRenders) {
+        pressed = true;
+        return err(`Not app-ready yet, and you have ${maxRenders - renders} render${maxRenders - renders === 1 ? '' : 's'} left:\n- ${failures(best.report).join('\n- ')}\nFix these with revise (several at once), or call finish again to keep it as it is.`);
+      }
       finished = p.data;
       return { text: 'Finished. The drawing is being turned into layers.' };
     }
@@ -291,13 +313,16 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
     const off = await offPalette(svg, palette);
     const sym = await symmetry(png);
     const unused = check.colors.filter((c) => !palette.some((p) => p.hex === c));
-    if (off.share > 0.004) warnings.push(`${(off.share * 100).toFixed(1)}% of flat areas are colors outside the palette (${off.colors.join(', ')}): remove opacity, masks or blends, or add the color to the palette.`);
     if (unused.length) warnings.push(`Colors in the SVG but not in the palette: ${unused.slice(0, 8).join(', ')}.`);
     if (run.reading.colorMode === 'neutral' && palette.some((p) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(p.hex.slice(i, i + 2), 16)); return Math.max(r, g, b) - Math.min(r, g, b) > 6; })) warnings.push('The color rule is a neutral base, but the palette has hues: use grays only.');
-    if (palette.length > 14) warnings.push(`The palette has ${palette.length} colors: use fewer flat colors (each becomes a layer).`);
-    warnings.push(...layoutWarnings(layout, size, run.reading));
+    // the measured checks of what an app asks of the piece (and the layout's own, which they include)
+    const report = await appReady(svg, layout, palette, run.reading, off);
+    warnings.push(...failures(report));
+    // the original's window, where the drawing keeps the original's shape (a recomposed square master does not)
     const wantWindow = measuredWindow(ctx.analysis);
-    if (run.reading.kind === 'frame' && wantWindow) {
+    const bb = ctx.analysis?.bbox as number[] | undefined;
+    const sameShape = !!bb && bb[2] > 0 && bb[3] > 0 && Math.abs((size[0] / size[1]) / (bb[2] / bb[3]) - 1) < 0.08;
+    if (run.reading.kind === 'frame' && wantWindow && sameShape) {
       const got = await windowOf(png);
       const pct = (v: number) => `${Math.round(v * 100)}%`;
       const edges = (r: number[]) => [r[0], r[1], 1 - r[0] - r[2], 1 - r[1] - r[3]];   // left, top, right, bottom band depths
@@ -311,12 +336,12 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
     }
     if ((run.reading.symmetry === 'four-way' || run.reading.symmetry === 'mirror-x') && sym.lr < 0.97) warnings.push(`Left–right symmetry is ${sym.lr}: the reading says the design is mirrored. Draw half and mirror it.`);
     if (run.reading.symmetry === 'four-way' && sym.tb < 0.97) warnings.push(`Top–bottom symmetry is ${sym.tb}: the reading says four-way. Mirror a quarter (unless the foot is deliberately deeper).`);
-    const checks: Checks = { size, palette, offPalette: +off.share.toFixed(4), symmetry: sym, warnings };
+    const checks: Checks = { size, palette, offPalette: +off.share.toFixed(4), symmetry: sym, warnings, appReady: report };
     iteration.ok = true;
     iteration.checks = checks;
     fs.writeFileSync(path.join(dir, 'checks.json'), JSON.stringify({ ...checks, layout, logs: out.output.logs }, null, 1));
     run.iterations.push(iteration);
-    best = { program, svg, palette, layout };
+    best = { program, svg, palette, layout, report };
     emit({ type: 'iteration', iteration });
     ctx.save();
     const left = maxRenders - renders;
@@ -324,6 +349,7 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
       `Render ${renders} of ${maxRenders} (${left} left)${left === 0 ? ': this was the last one; call finish now' : ''}. Ran in ${out.ms} ms; SVG ${(svg.length / 1024).toFixed(0)} KB, ${size[0]} × ${size[1]} units.`,
       `Palette (${palette.length}): ${palette.map((p) => `${p.name} ${p.hex}`).join(', ')}.`,
       `Layout: ${JSON.stringify(layout)}.`,
+      `App-ready: ${report.checks.filter((c) => c.ok).length} of ${report.checks.length} checks pass${report.ok ? '' : ` (failing: ${report.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(', ')})`}.`,
       `Symmetry: left–right ${sym.lr}, top–bottom ${sym.tb}.`,
       warnings.length ? `Warnings:\n- ${warnings.join('\n- ')}` : 'No warnings.',
       out.output.logs.length ? `console.log:\n${out.output.logs.join('\n')}` : '',
@@ -360,28 +386,4 @@ function normalizeLayout(raw: unknown, size: [number, number]): Layout | null {
   if (form === 'corner') out.corner = l.corner ?? 'top-left';
   if (form === 'tile') out.lattice = ['grid', 'half-drop', 'brick'].includes(l.lattice) ? l.lattice : 'grid';
   return out;
-}
-
-function layoutWarnings(l: Layout | null, [W, H]: [number, number], reading: Reading): string[] {
-  const w: string[] = [];
-  if (!l) return w;
-  const expect = ({ frame: 'frame', border: 'border', corner: 'corner', pattern: 'tile' } as Record<string, string>)[reading.kind] ?? 'whole';
-  if (l.form !== expect) w.push(`layout.form is '${l.form}' but this ${reading.kind} needs '${expect}'.`);
-  const inside = (r: [number, number] | undefined, L: number, name: string) => {
-    if (r && !(r[0] >= 0 && r[1] <= L && r[1] > r[0])) w.push(`${name} [${r}] is not a range inside 0–${L}.`);
-  };
-  inside(l.repeat?.x, W, 'repeat.x');
-  inside(l.repeat?.y, H, 'repeat.y');
-  if (l.form === 'frame') {
-    const [sx, sy] = Array.isArray(l.slice) ? l.slice : [l.slice!, l.slice!];
-    for (const [axis, L, s] of [['x', W, sx], ['y', H, sy]] as const) {
-      const k = l.keep?.[axis], r = l.repeat?.[axis];
-      if (k && Math.abs((k[0] + k[1]) / 2 - L / 2) > 0.5) w.push(`keep.${axis} [${k}] is not centered on ${L / 2}.`);
-      if (r && r[0] < s - 0.5) w.push(`repeat.${axis} starts at ${r[0]}, inside the corner (slice ${s}): the unit must start after the corner.`);
-      if (r && k && r[1] > k[0] + 0.5) w.push(`repeat.${axis} ends at ${r[1]}, past the kept middle's start ${k[0]}: the unit must lie in the first half, before the keep.`);
-    }
-    if (!l.repeat && reading.repeats.axis !== 'none') w.push('The reading says the edges repeat, but layout has no repeat: give repeat.x and repeat.y.');
-  }
-  if (l.form === 'border' && !l.repeat?.x) w.push('A border needs repeat.x: the unit that repeats along it.');
-  return w;
 }

@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX } from '@telios/shared';
+import { BACKGROUND_HEX, classOf, kindFor } from '@telios/shared';
 import type { Design, RunEvent } from '@telios/shared';
 import { DATA } from '../config.ts';
 import { provider } from '../engine/llm.ts';
@@ -55,8 +55,15 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     stopped();
     const read = getDesign(design.id);
     if (read?.status !== 'ready' || !read.reading) throw new Error(read?.error ?? 'The picture could not be read.');
-    // the batch has no step to check the reading: what the model read is what it draws
-    updateDesign(design.id, (d) => { if (d.reading) d.reading.confirmed = true; });
+    // the batch has no step to check the reading: what the model read is what it draws, unless the user said what it is made for
+    updateDesign(design.id, (d) => {
+      const rd = d.reading;
+      if (!rd) return;
+      rd.kind = kindFor(o.madeFor, rd.kind);
+      const axis = ({ frame: 'edges', border: 'x', tile: 'lattice' } as const)[classOf(rd.kind) as 'frame' | 'border' | 'tile'];
+      if (axis && rd.repeats.axis === 'none') rd.repeats = { axis, description: rd.repeats.description || `drawn as a ${rd.kind}, as asked`, count: rd.repeats.count };
+      rd.confirmed = true;
+    });
 
     const run = newRun(getDesign(design.id)!, 'reillustrate', { note: o.notes || undefined });
     stage('Studying the picture', drawingStage('plan', '', run.options.maxRenders));
@@ -73,6 +80,12 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     fs.writeFileSync(path.join(dir, 'result.png'), png);
     fs.copyFileSync(from(res.files.layered), path.join(dir, 'result.svg'));
     if (res.files.layout) fs.copyFileSync(from(res.files.layout), path.join(dir, 'layout.json'));
+    if (res.files.fitsheet) fs.copyFileSync(from(res.files.fitsheet), path.join(dir, 'fitsheet.png'));
+    // what the app package is made from (restyle/package.ts)
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
+      kind: done.reading.kind, rendering: done.reading.rendering, colorMode: res.colorMode, material: done.reading.material, style: done.reading.style, motifs: done.reading.motifs,
+      carvedLines: done.reading.carvedLines, palette: res.palette, layers: res.layers, summary: res.summary, model: done.options.model, appReady: res.appReady,
+    }, null, 1));
     await screenCopies(png, dir);
     const meta = await sharp(png).metadata();
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
@@ -83,10 +96,10 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
       x.size = [meta.width!, meta.height!];
       x.drawing = {
         runId: done.id, model: done.options.model, renders: done.iterations.filter((i) => i.ok).length, maxRenders: done.options.maxRenders,
-        costUsd: done.usage.costUsd, kind: done.reading.kind, colorMode: res.colorMode, summary: res.summary,
+        costUsd: done.usage.costUsd, kind: done.reading.kind, colorMode: res.colorMode, summary: res.summary, appReady: res.appReady,
       };
       x.files = {
-        png: rel(path.join(dir, 'result.png')), svg: rel(path.join(dir, 'result.svg')), ...(res.files.layout && { layout: rel(path.join(dir, 'layout.json')) }),
+        png: rel(path.join(dir, 'result.png')), svg: rel(path.join(dir, 'result.svg')), ...(res.files.layout && { layout: rel(path.join(dir, 'layout.json')) }), ...(res.files.fitsheet && { fitsheet: rel(path.join(dir, 'fitsheet.png')) }),
         thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')),
       };
     });

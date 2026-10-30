@@ -175,6 +175,89 @@ const grays = (n, dark = 28, light = 236) => Array.from({ length: n }, (_, i) =>
 /** A color between two hex colors. */
 const mix = (a, b, t) => '#' + [1, 3, 5].map((i) => Math.round(lerp(parseInt(a.slice(i, i + 2), 16), parseInt(b.slice(i, i + 2), 16), t)).toString(16).padStart(2, '0')).join('');
 
+// ── A frame put together from parts ──
+
+/**
+ * A frame built from parts, with its fitting data made for you, so what you draw is exactly what an
+ * app fits to a page: the four corners kept as drawn, each edge filled with whole copies of one unit,
+ * and a middle ornament kept whole. You draw each part in its own box (origin at the box's top left);
+ * a part is cut off at its box, so draw inside it. Returns { body, defs, layout }:
+ *
+ *   const { body, defs, layout } = frameKit({
+ *     size: [1800, 1800],            // the master: a square
+ *     slice: [260, 300],             // each corner's box [across, down]; also the depth of the head and foot rows
+ *     corner: () => …,               // the top-left corner, in a 260 × 300 box (the others are its mirror)
+ *     edgeX: { len: 120,             // one unit of the top edge, about this long (the kit adjusts it to fit whole units)
+ *              draw: (len) => …,     //   in a len × 300 box; the bottom edge is its upside-down copy …
+ *              bottom: (len) => … },  //   … unless you give the foot its own drawing, in the same len × 300 box
+ *     edgeY: { len: 120, draw: (len) => … },   // one unit of the left side, in a 260 × len box; the right is its mirror
+ *     keepX: { w: 400, top: () => …, bottom: () => … },   // optional: an ornament in the middle of the head and the foot, in w × 300 boxes
+ *     keepY: { h: 300, draw: () => … },                   // optional: an ornament in the middle of the sides, in a 260 × h box
+ *   });
+ *   return { svg: svgDoc(W, H, body, defs + yourOwnDefs), palette, layout };
+ *
+ * The units are drawn at whatever exact length fits (draw receives it), and each must start and end at
+ * the same point of its pattern, so that copies meet without a seam. Everything of the frame belongs to a
+ * part: what is drawn outside the parts is not part of the frame.
+ */
+function frameKit(o) {
+  const [W, H] = o.size;
+  const [sx, sy] = Array.isArray(o.slice) ? o.slice : [o.slice, o.slice];
+  if (!o.corner || !o.edgeX || !o.edgeY) throw new Error('frameKit needs corner, edgeX and edgeY.');
+  if (2 * sx > W || 2 * sy > H) throw new Error(`frameKit: slice [${sx}, ${sy}] is more than half the canvas ${W} × ${H}.`);
+  const defs = [];
+  const clips = {};
+  const MX = `matrix(-1 0 0 1 ${f(W)} 0)`, MY = `matrix(1 0 0 -1 0 ${f(H)})`, MXY = `matrix(-1 0 0 -1 ${f(W)} ${f(H)})`;
+  // one drawing of a part, defined once; put() shows it in its box at (x, y), then mirrors it on the page
+  const part = (body, name) => { const id = uid(name); defs.push(`<g id="${id}">${body}</g>`); return id; };
+  const put = (id, w, h, x, y, tf = '') => {
+    const key = `${f(w)}x${f(h)}`;
+    if (!clips[key]) { clips[key] = uid('box'); defs.push(`<clipPath id="${clips[key]}"><rect width="${f(w)}" height="${f(h)}" shape-rendering="crispEdges"/></clipPath>`); }
+    return `<g${tf ? ` transform="${tf}"` : ''}><g transform="translate(${f(x)} ${f(y)})"><g clip-path="url(#${clips[key]})"><use href="#${id}"/></g></g></g>`;
+  };
+  const out = [];
+  // corners
+  const corner = part(o.corner(), 'corner');
+  for (const tf of ['', MX, MY, MXY]) out.push(put(corner, sx, sy, 0, 0, tf));
+  // head and foot: whole units either side of a kept middle (the right half mirrors the left)
+  const kx = o.keepX ? o.keepX.w : 0, ky = o.keepY ? o.keepY.h : 0;
+  const roomX = o.keepX ? (W - kx) / 2 - sx : W - 2 * sx;
+  const nx = Math.max(1, Math.round(roomX / o.edgeX.len)), Lx = roomX / nx;
+  const top = part(o.edgeX.draw(Lx), 'unitx');
+  const foot = o.edgeX.bottom ? part(o.edgeX.bottom(Lx), 'footx') : null;
+  const keepTop = o.keepX ? part(o.keepX.top(), 'keeptop') : null;
+  const keepFoot = o.keepX ? (o.keepX.bottom ? part(o.keepX.bottom(), 'keepfoot') : null) : null;
+  for (let i = 0; i < nx; i++) {
+    const x = sx + i * Lx;
+    out.push(put(top, Lx, sy, x, 0));
+    out.push(foot ? put(foot, Lx, sy, x, H - sy) : put(top, Lx, sy, x, 0, MY));
+    if (o.keepX) {
+      out.push(put(top, Lx, sy, x, 0, MX));
+      out.push(foot ? put(foot, Lx, sy, x, H - sy, MX) : put(top, Lx, sy, x, 0, MXY));
+    }
+  }
+  if (o.keepX) {
+    out.push(put(keepTop, kx, sy, (W - kx) / 2, 0));
+    out.push(keepFoot ? put(keepFoot, kx, sy, (W - kx) / 2, H - sy) : put(keepTop, kx, sy, (W - kx) / 2, 0, MY));
+  }
+  // the sides: whole units either side of a kept middle (the lower half mirrors the upper)
+  const roomY = o.keepY ? (H - ky) / 2 - sy : H - 2 * sy;
+  const ny = Math.max(1, Math.round(roomY / o.edgeY.len)), Ly = roomY / ny;
+  const side = part(o.edgeY.draw(Ly), 'unity');
+  for (let j = 0; j < ny; j++) {
+    const y = sy + j * Ly;
+    out.push(put(side, sx, Ly, 0, y), put(side, sx, Ly, 0, y, MX));
+    if (o.keepY) out.push(put(side, sx, Ly, 0, y, MY), put(side, sx, Ly, 0, y, MXY));
+  }
+  if (o.keepY) {
+    const keepSide = part(o.keepY.draw(), 'keepside');
+    out.push(put(keepSide, sx, ky, 0, (H - ky) / 2), put(keepSide, sx, ky, 0, (H - ky) / 2, MX));
+  }
+  const layout = { form: 'frame', size: [W, H], slice: [sx, sy], repeat: { x: [f(sx), f(sx + Lx)], y: [f(sy), f(sy + Ly)] } };
+  if (kx || ky) layout.keep = { ...(kx ? { x: [f((W - kx) / 2), f((W + kx) / 2)] } : {}), ...(ky ? { y: [f((H - ky) / 2), f((H + ky) / 2)] } : {}) };
+  return { body: out.join(''), defs: defs.join(''), layout };
+}
+
 // ── The document ──
 
 /** A complete SVG document W × H with optional <defs>. Return its text as draw()'s `svg`. */

@@ -1,5 +1,7 @@
 // The data Telios keeps about a design and its runs, shared by the API, the job worker and the web app.
 
+import type { AppReport } from './appready.ts';
+
 export type Kind = 'frame' | 'border' | 'corner' | 'ornament' | 'pattern' | 'initial' | 'other';
 export type Rendering = 'flat' | 'shaded';
 /** The user's color rule: one ink stays one ink; a neutral grayscale base where color stands for a
@@ -124,6 +126,8 @@ export interface Checks {
   symmetry?: { lr: number; tb: number };
   similarity?: number;
   warnings: string[];
+  /** What the piece must pass to go into an app as it is: measured on this render. */
+  appReady?: AppReport;
 }
 
 export interface LayerInfo {
@@ -142,7 +146,9 @@ export interface RunResult {
   /** What Rebuild found and did, a sentence each. */
   notes?: string[];
   colorMode: ColorMode;
-  files: { drawing: string; layered: string; preview: string; compare?: string; program?: string; layout?: string; unitcheck?: string; fitcheck?: string };
+  /** The final piece against the app-ready checks (a drawing made by a model). */
+  appReady?: AppReport;
+  files: { drawing: string; layered: string; preview: string; compare?: string; program?: string; layout?: string; unitcheck?: string; fitcheck?: string; fitsheet?: string };
 }
 
 export interface Run {

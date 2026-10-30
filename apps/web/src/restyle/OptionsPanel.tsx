@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, TARGETS, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -35,6 +35,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (t !== 'illustration') set('medium', '');
     if (drawnByModel(t)) set('theme', '');
+    if (!drawnByModel(t)) set('madeFor', 'auto');
     if (!PICTURE_LED_TYPES.includes(t)) set('complete', false);
   };
   // Complete the figure cuts the subject out and draws the missing part by an inpaint: both need ComfyUI to have them
@@ -63,6 +64,15 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               ? <span className="warn">{health.model.provider === 'none' ? 'No model is set up' : `${health.model.label} is not answering`}: a flat SVG is drawn by a model, not ComfyUI. {health.model.error}</span>
               : <>Drawn as new vector art by {health ? `${health.model.label} ${health.model.name}` : 'the model'}, not by ComfyUI: a few minutes and a few cents a picture, in a few renders it checks itself. It reads what each picture is (a frame, a border, a corner, an ornament) and how it is colored. The SVG has one layer per color{' '}and, for a frame or border, the data that fits it to any page.</>}
           </div>
+        )}
+        {byModel && (
+          <label className="field">
+            <div className="label">Made for</div>
+            <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>
+              {TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <div className="sub">{TARGETS.find((t) => t.value === options.madeFor)?.hint}{options.madeFor === 'auto' ? '' : ' It is drawn that way and checked for it.'} Every drawing is measured for an app (nothing cut off, a clear ground, lines that hold, few colors) and comes with an app package.</div>
+          </label>
         )}
         {!byModel && <label className="field">
           <div className="label">Illustration style</div>

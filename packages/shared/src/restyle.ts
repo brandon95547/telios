@@ -3,6 +3,7 @@
 // the data kept about each input and result.
 
 import { CATALOG } from './catalog.ts';
+import { TARGETS, type AppReport, type Target } from './appready.ts';
 
 export { CATALOG };
 
@@ -124,11 +125,13 @@ export interface RestyleOptions {
   notes: string;
   /** Draw the part of the picture that is cut off below (COMPLETE_SHARE), for 2D and 3D illustrations. */
   complete: boolean;
+  /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
+  madeFor: Target;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false,
+  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false, madeFor: 'auto',
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -228,7 +231,7 @@ export interface RestyleResult {
   designId?: string;
   drawing?: VectorDrawing;
   /** Paths inside the data folder. `png` is the preview for a flat SVG; `layout` is its fitting data. */
-  files?: { png: string; svg?: string; layout?: string; thumb: string; view: string; original: string };
+  files?: { png: string; svg?: string; layout?: string; fitsheet?: string; thumb: string; view: string; original: string };
 }
 
 /** What the model's drawing says of itself, kept with a flat SVG result. */
@@ -243,6 +246,8 @@ export interface VectorDrawing {
   /** What it read the picture as, and the color rule it drew by. */
   kind: string;
   colorMode: string;
+  /** The checks that say whether it can go into an app as it is. */
+  appReady?: AppReport;
   summary: string;
 }
 
@@ -285,6 +290,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   o.complete = PICTURE_LED_TYPES.includes(o.type) && raw?.complete === true;
+  o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto') : 'auto';
   return o;
 }
 
@@ -309,7 +315,9 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
       // a model with no known price (a local or custom one) has no cost to show
       if (d.costUsd > 0) rows.push({ label: 'Cost', value: d.costUsd < 0.005 ? 'under 1¢' : `about ${(d.costUsd * 100).toFixed(d.costUsd < 0.1 ? 1 : 0)}¢` });
       rows.push({ label: 'Read as', value: `${d.kind}, ${COLOR_RULE_WORDS[d.colorMode] ?? d.colorMode}` });
+      if (d.appReady) rows.push({ label: 'App-ready', value: d.appReady.ok ? `yes, all ${d.appReady.checks.length} checks pass` : `no: ${d.appReady.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(', ')}` });
     }
+    if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     rows.push({ label: 'Background', value: BACKGROUND_LABEL[o.background] });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
     return rows;

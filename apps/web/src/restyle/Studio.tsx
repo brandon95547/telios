@@ -234,6 +234,7 @@ export function Studio({ health }: { health: Health | null }) {
                     </button>
                     <div className="tile-name">{r.inputName}{r.options.variations > 1 ? ` · v${r.variation}` : ''}</div>
                     <div className="tile-meta">{[typeInfo(r.options.type).label, findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean).join(' · ')}</div>
+                    {r.drawing?.appReady && <div className={`tile-ready ${r.drawing.appReady.ok ? 'pass' : 'fail'}`} title={r.drawing.appReady.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join('\n')}>{r.drawing.appReady.ok ? '✓ App-ready' : `✗ Not app-ready (${r.drawing.appReady.checks.filter((c) => !c.ok).length})`}</div>}
                     {r.warning && <div className="tile-warn" title={r.warning}>Drawn on white: background not cleared</div>}
                     {r.files && (
                       <div className="tile-actions">

@@ -56,6 +56,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
             Download
             {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
             {byModel && r.files.layout && <a href={restyle.downloadOne(r.id, 'layout')} download>Fitting data</a>}
+            {byModel && r.drawing && <a href={restyle.downloadOne(r.id, 'package')} download title="The SVG, its fitting data and checks, and the sheet that shows it fitted">App package</a>}
             {byModel && 'Preview:'}
             {(['png', 'webp', 'jpeg'] as const).map((f) => <a key={f} href={restyle.downloadOne(r.id, f)} download>{f.toUpperCase()}</a>)}
             {!byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
@@ -79,6 +80,17 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
               <b>What the model says</b>
               <p>{r.drawing.summary}</p>
               {r.designId && <a href={`#/d/${r.designId}`}>Review its drawings, layers and page fits in Vector redraw</a>}
+            </div>
+          )}
+          {r.drawing?.appReady && (
+            <div className="appready">
+              <b>{r.drawing.appReady.ok ? 'App-ready: every check passes' : 'Not app-ready yet: some checks fail'}</b>
+              <ul>
+                {r.drawing.appReady.checks.map((c) => (
+                  <li key={c.id} className={c.ok ? 'pass' : 'fail'}><span aria-hidden="true">{c.ok ? '✓' : '✗'}</span><span><b>{c.label}</b>: {c.detail}</span></li>
+                ))}
+              </ul>
+              {r.files.fitsheet && <a href={api.file(r.files.fitsheet)} target="_blank" rel="noreferrer">See it fitted</a>}
             </div>
           )}
         </section>

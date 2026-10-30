@@ -15,6 +15,7 @@ import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
 import type { ToWorker } from '../worker/main.ts';
 import { fileHash, knownHashes } from './duplicates.ts';
+import { writePackage } from './package.ts';
 import { getInput, getResult, inputDir, listInputs, listResults, newInputId, newResultId, removeInput, removeResult, resultDir, saveInput, saveResult } from './store.ts';
 
 /** What an upload may be, by extension; a zip is opened, a PDF taken page by page. */
@@ -204,6 +205,22 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.layout.json"`);
       return res.type('application/json').send(fs.readFileSync(path.join(resultDir(r.id), 'layout.json')));
     }
+    if (want === 'package') {
+      // a flat SVG as an app takes it in: the SVG, its fitting data and checks, and the sheet that shows it fitted
+      if (!r.files.svg || !r.drawing) return res.status(404).json({ error: 'Only a flat SVG has an app package.' });
+      fs.mkdirSync(ZIPS, { recursive: true });
+      const token = crypto.randomBytes(12).toString('hex');
+      const work = path.join(ZIPS, `${token}.files`);
+      const zip = path.join(ZIPS, `${token}.zip`);
+      try {
+        const files = await writePackage(r, name, work);
+        fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(files));
+        await python(['pack', path.join(work, 'manifest.json'), zip], 5 * 60_000);
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+      return res.download(zip, `${name}-package.zip`, () => fs.rmSync(zip, { force: true }));
+    }
     if (want === 'svg') {
       if (!r.files.svg) return res.status(404).json({ error: 'This one has no SVG.' });
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.svg"`);
@@ -231,6 +248,13 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
       taken.add(out.toLowerCase());
       return out;
     };
+    // a folder of its own for each package, whatever two pictures are called
+    const folderFor = (name: string) => {
+      let n = 1, out = `${name}/`;
+      while (taken.has(out.toLowerCase())) out = `${name}-${++n}/`;
+      taken.add(out.toLowerCase());
+      return out;
+    };
     const manifest: { src: string; name: string }[] = [];
     try {
       for (const r of chosen) {
@@ -241,6 +265,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
         manifest.push({ src, name: unique(`${base}.${EXT[r.options.format]}`) });
         if (r.files!.svg) manifest.push({ src: path.join(resultDir(r.id), 'result.svg'), name: unique(`${base}.svg`) });
         if (r.files!.layout) manifest.push({ src: path.join(resultDir(r.id), 'layout.json'), name: unique(`${base}.layout.json`) });
+        if (r.files!.svg && r.drawing) manifest.push(...await writePackage(r, base, path.join(work, `${r.id}-package`), folderFor(`${base}-package`)));
       }
       fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(manifest));
       await python(['pack', path.join(work, 'manifest.json'), path.join(ZIPS, `${token}.zip`)], 15 * 60_000);

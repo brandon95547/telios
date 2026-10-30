@@ -131,6 +131,33 @@ Vector redraw runs. A result keeps the layered SVG, its fitting data (`.layout.j
 and a PNG preview; its viewer links to the full drawings and page fits in Vector redraw, and
 deleting the result deletes those too.
 
+**Made for.** A Flat SVG is made for a kind of piece: a frame, a border, a corner, a pattern tile or
+an object (anything drawn whole: a flower, an animal, a sign, an ornament, a letter). *Let it
+decide* keeps what the model read; the others say what the picture is. The kind decides how it is
+drawn and what it must pass:
+
+- A **frame** is drawn on a square master, whatever shape the original is, so it fits any page, from
+  portrait through square to landscape. It is built from parts (`frameKit` in the drawing library:
+  a corner, one unit of each edge, an optional ornament kept in the middle of an edge), so its fitting
+  data is made for it and cannot disagree with the drawing.
+- An **object** is drawn whole on a canvas of its own shape with a little spare round it, and is
+  trimmed to its drawing in its package. None of a frame's fitting is asked of it.
+
+**App-ready checks.** Every render is measured, and what fails goes back to the model as text (so a
+cheaper model can fix it without a human judging a picture): nothing cut off at the canvas edge, a
+clear ground, lines that hold at phone size (not hairlines), at most eight flat colors, and a
+reasonable file size; for a frame, border or tile also its fitting data, the seams where units
+repeat, the window of a frame, and that every unit stays within about 0.78–1.3 of its size on each of
+twelve book sizes (6×9, 5.5×8.5, 8.5×11, 5×8, 4.25×6.87, 8×10, 8×8, 7×10, 11×8.5, 8.5×8.5, 9×12,
+6×6). `finish` sends a drawing back once while it fails and renders remain. The result shows what
+passed, and a tile says *App-ready* or *Not app-ready*.
+
+**App package.** A Flat SVG downloads as a package (the viewer's *App package*, and a folder in the
+zip): the layered SVG, a JSON manifest (what it is, its size and fitting data in the SVG's own units,
+its colors and layers, and the checks), a fit sheet (the piece fitted as an app will place it) and
+a README. The format is `telios-app-package`, version 1; an app reads the manifest and takes the
+layers as they are.
+
 Other settings (all optional, in the shell or `.env`): `TELIOS_EFFORT` (`low`, `medium` or
 `high`, default `high`), `TELIOS_MAX_RENDERS` (default 8), `TELIOS_DRAW_CONCURRENCY` (default 2),
 `TELIOS_DATA` (default `./data`), `PORT` (default 5178).

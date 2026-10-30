@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_OPTIONS, progressAt, settingRows } from '../src/index.ts';
+import { cleanOptions, DEFAULT_OPTIONS, progressAt, settingRows } from '../src/index.ts';
 import type { DrawSettings, RestyleOptions } from '../src/index.ts';
 
 const drawn: DrawSettings = { model: 'flux1-dev-Q4_K_S.gguf', width: 912, height: 1152, steps: 20, denoise: 0.75, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -59,4 +59,24 @@ test('progress eases through a stage and waits near its end, never passing it', 
   assert.ok(0.2 < early && early < onTime && onTime < late, 'forward with time');
   assert.ok(onTime > 0.2 + 0.4 * 0.9 && onTime < 0.6, 'nearly through the stage by the time it usually ends');
   assert.ok(late <= 0.6 + 1e-9, 'a stage that runs long stops at its end');
+});
+
+test('a flat SVG says what it is made for, and nothing else is made for anything', () => {
+  assert.equal(DEFAULT_OPTIONS.madeFor, 'auto');
+  assert.equal(cleanOptions({ type: 'vector', madeFor: 'frame' }).madeFor, 'frame');
+  assert.equal(cleanOptions({ type: 'vector', madeFor: 'object' }).madeFor, 'object');
+  assert.equal(cleanOptions({ type: 'vector', madeFor: 'wall' }).madeFor, 'auto', 'a word it does not know falls back');
+  assert.equal(cleanOptions({ type: 'clipart', madeFor: 'frame' }).madeFor, 'auto', 'ComfyUI types are not made for a kind');
+  assert.equal(cleanOptions({}).madeFor, 'auto');
+});
+
+test('the preview says what a flat SVG was made for and whether it is app-ready', () => {
+  const base = { options: { ...DEFAULT_OPTIONS, type: 'vector' as const, madeFor: 'frame' as const }, size: [200, 100] as [number, number] };
+  const drawing = { runId: 'r', model: 'm', renders: 2, maxRenders: 6, costUsd: 0, kind: 'frame', colorMode: 'full', summary: 's' };
+  const ok = rowsOf(settingRows({ ...base, drawing: { ...drawing, appReady: { piece: 'frame', ok: true, checks: [{ id: 'clip', label: 'Nothing cut off', ok: true, detail: '' }] } } }));
+  assert.equal(ok['Made for'], 'Frame');
+  assert.equal(ok['App-ready'], 'yes, all 1 checks pass');
+  const bad = rowsOf(settingRows({ ...base, drawing: { ...drawing, appReady: { piece: 'frame', ok: false, checks: [{ id: 'fit', label: 'Fits every book size', ok: false, detail: '' }, { id: 'thin', label: 'Lines hold at small size', ok: false, detail: '' }] } } }));
+  assert.equal(bad['App-ready'], 'no: fits every book size, lines hold at small size');
+  assert.equal(rowsOf(settingRows({ ...base, options: { ...base.options, madeFor: 'auto' }, drawing }))['Made for'], undefined, 'let it decide has no row');
 });

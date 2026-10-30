@@ -145,6 +145,51 @@ test('a flat SVG reports its stages as progress that only moves forward, and non
   removeResult('xvec4');
 });
 
+test('what a flat SVG is made for overrides what the model read, and "let it decide" leaves it', async () => {
+  const seen: Record<string, [string, string]> = {};
+  const finish = finishes();
+  const watching = (key: string) => async (runId: string, hooks: { signal: AbortSignal; onEvent: (e: RunEvent) => void }) => {
+    const run = getRun(runId)!;
+    seen[key] = [run.reading.kind, run.reading.repeats.axis];
+    await finish(runId, hooks);
+  };
+  for (const [key, madeFor] of [['auto', 'auto'], ['frame', 'frame'], ['object', 'object'], ['border', 'border'], ['pattern', 'pattern']] as const) {
+    await makeResult(`xmade${key}`, { madeFor });
+    await drawVector(`xmade${key}`, new AbortController().signal, { read, draw: watching(key) });
+    assert.equal(getResult(`xmade${key}`)!.status, 'done', key);
+    removeResult(`xmade${key}`);
+  }
+  const read0 = fromAnalysis({}).kind;
+  assert.deepEqual(seen.auto, [read0, fromAnalysis({}).repeats.axis], 'as the model read it');
+  assert.deepEqual(seen.frame, ['frame', 'edges'], 'a frame repeats along its edges');
+  assert.equal(['frame', 'border', 'corner', 'pattern'].includes(seen.object[0]), false, 'an object is drawn whole');
+  assert.deepEqual(seen.border, ['border', 'x']);
+  assert.deepEqual(seen.pattern, ['pattern', 'lattice']);
+});
+
+test('the app-ready report, the fit sheet and what the app package is made from come with the result', async () => {
+  await makeResult('xvec7');
+  const finish = finishes();
+  const report = { piece: 'frame', ok: false, checks: [{ id: 'fit', label: 'Fits every book size', ok: false, detail: 'stretched' }, { id: 'clip', label: 'Nothing cut off', ok: true, detail: 'fine' }] };
+  const draw = async (runId: string, hooks: { signal: AbortSignal; onEvent: (e: RunEvent) => void }) => {
+    await finish(runId, hooks);
+    const run = getRun(runId)!;
+    const dir = path.join(runDir(run.designId, run.id), 'result');
+    await sharp({ create: { width: 60, height: 40, channels: 3, background: '#ccc' } }).png().toFile(path.join(dir, 'fitsheet.png'));
+    run.result!.appReady = report as any;
+    run.result!.files.fitsheet = rel(path.join(dir, 'fitsheet.png'));
+    saveRun(run);
+  };
+  await drawVector('xvec7', new AbortController().signal, { read, draw });
+  const r = getResult('xvec7')!;
+  assert.deepEqual(r.drawing?.appReady, report);
+  assert.ok(r.files?.fitsheet && fs.existsSync(path.join(resultDir('xvec7'), 'fitsheet.png')));
+  const meta = JSON.parse(fs.readFileSync(path.join(resultDir('xvec7'), 'meta.json'), 'utf8'));
+  assert.deepEqual([meta.kind, meta.colorMode, meta.palette.length >= 0], [fromAnalysis({}).kind, 'full', true]);
+  assert.match(settingRows(r).map((x) => `${x.label}: ${x.value}`).join('\n'), /App-ready: no: fits every book size/);
+  removeResult('xvec7');
+});
+
 test('a background other than transparent is put behind the preview, not the SVG', async () => {
   await makeResult('xvec2', { background: 'white' });
   await drawVector('xvec2', new AbortController().signal, { read, draw: finishes() });

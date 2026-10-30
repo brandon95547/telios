@@ -14,9 +14,9 @@ window (the window stays empty and transparent), a caption, a page number, stain
 
 Write JavaScript that defines `function draw()` returning `{ svg, palette, layout }`:
 
-- `svg`: the complete SVG document text, from `svgDoc(W, H, body, defs)`. W × H in design units:
-  the design's own aspect ratio (you are told the original's), about 1200–1800 on the long side.
-  The canvas is the design itself, edge to edge, with no margin of paper round it.
+- `svg`: the complete SVG document text, from `svgDoc(W, H, body, defs)`. W × H in design units,
+  as the task says for this kind of piece (below). The canvas is the design itself, with no margin
+  of paper round it.
 - `palette`: the colors you drew with, named: `{ Ink: '#1d1a17', Lines: '#f3e8cf' }`. Every
   color in the drawing must be one of these. Names are what a person would call them; they become
   the layer names.
@@ -36,6 +36,10 @@ no blending, so each color can become its own clean layer. Use `symbol()` / `<us
 repeated many times, to keep the file small (a few MB at most).
 
 ## Kinds, and the layout each returns
+
+The task says what the piece is made for (a frame, a border, a corner, a pattern tile, or an
+object) and what canvas to draw it on. The notes for that kind come after this brief, and where
+they say more than this brief, they win.
 
 **Frame** (goes round a page or panel): `layout: { form: 'frame', size: [W, H], slice, keep, repeat }`.
 An app keeps the four **corners** as drawn and fills each edge with whole repeating units, as many
@@ -121,6 +125,23 @@ Typical fixes from first rounds: too sparse → tendrils, leaves and buds growin
 leaves floating → attach them at the stem's tangent; dark wedges reading as shadows → remove;
 a crude, oversized motif → smaller units with cleaner lines; repeats overlapping into ticks →
 make units meet edge to edge.
+
+## App-ready
+
+Everything you draw goes into an app that places it on pages as it is, so every render is measured
+against checks, whatever the kind, and what fails comes back to you as lines starting `App-ready,`
+with the measurement and what to change:
+
+- **Nothing cut off.** Every shape stays inside the canvas: an edge that cuts a shape off cuts it
+  off for good. Inset what is drawn on an edge by half its width.
+- **A clear ground.** Draw no background, paper or floor: where nothing is drawn it is transparent.
+- **Lines that hold.** No line thinner than about 0.25% of the canvas's long side (4 units on a
+  1600 canvas): finer ones vanish at phone and tile size. Give detail weight, or leave it out.
+- **Few flat colors.** At most eight, each in the palette, no opacity, no blends.
+- **The right layout** for the kind, which the checks read: frames, borders and tiles are also fitted
+  and joined the way an app will.
+
+Fix what fails before you finish. `finish` asks once more if a check still fails and you have renders left.
 
 ## How you work
 

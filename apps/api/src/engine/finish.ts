@@ -5,11 +5,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { lightnessOf } from '@telios/shared';
-import type { ColorMode, Design, Iteration, Layout, PaletteColor, Reading, Run, RunEvent, RunResult } from '@telios/shared';
+import { classOf, lightnessOf, reportOk } from '@telios/shared';
+import type { AppReport, ColorMode, Design, Iteration, Layout, PaletteColor, Reading, Run, RunEvent, RunResult } from '@telios/shared';
 import { TRACE } from '../config.ts';
 import { python } from '../python.ts';
 import { rel } from '../store.ts';
+import { fitSheet, sizeCheck } from './appready.ts';
 import { compare, fitCheck, render, traceCopy, unitCheck } from './render.ts';
 import { finalizeSvg } from './svg.ts';
 import type { Drawing } from './draw.ts';
@@ -35,6 +36,19 @@ export async function finishDrawing(design: Design, reading: Reading, runDir: st
   fs.writeFileSync(path.join(dir, 'compare.png'), await compare(cropPng, preview));
   const layout: Layout | null = d.layout;
   if (layout) fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify(fittingData(layout, scale), null, 1));
+  // the final piece against the app-ready checks, with its size now the layered SVG exists, and the sheet that shows it fitted
+  let appReady: AppReport | undefined;
+  if (d.appReady) {
+    const checks = [...d.appReady.checks, sizeCheck(fs.statSync(path.join(dir, 'layered.svg')).size)];
+    appReady = { ...d.appReady, checks, ok: reportOk(checks) };
+  }
+  let fitsheet: string | undefined;
+  try {
+    fs.writeFileSync(path.join(dir, 'fitsheet.png'), await fitSheet(svg, layout, classOf(reading.kind)));
+    fitsheet = rel(path.join(dir, 'fitsheet.png'));
+  } catch (e) {
+    console.error('[engine] the fit sheet could not be drawn:', (e as Error).message);
+  }
   return {
     size: size as [number, number],
     layers: traced.layers,
@@ -42,6 +56,7 @@ export async function finishDrawing(design: Design, reading: Reading, runDir: st
     palette,
     summary: [d.summary, d.colorRule, d.uncertain && `Unsure: ${d.uncertain}`].filter(Boolean).join(' '),
     colorMode: reading.colorMode,
+    appReady,
     files: {
       drawing: rel(path.join(dir, 'drawing.svg')),
       layered: rel(path.join(dir, 'layered.svg')),
@@ -49,6 +64,7 @@ export async function finishDrawing(design: Design, reading: Reading, runDir: st
       compare: rel(path.join(dir, 'compare.png')),
       program: rel(path.join(dir, 'program.js')),
       layout: layout ? rel(path.join(dir, 'layout.json')) : undefined,
+      fitsheet,
     },
   };
 }
