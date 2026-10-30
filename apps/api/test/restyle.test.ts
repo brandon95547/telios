@@ -11,7 +11,7 @@ const { cleanOptions, DEFAULT_OPTIONS, STYLE_REFERENCES, wantsStyleReference, fi
 const { restylePrompt, subjectFromName } = await import('../src/restyle/prompt.ts');
 const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, inpaintWorkflow, USO } = await import('../src/comfy/workflows.ts');
 const { gatewayClient, localClient, tokenUser } = await import('../src/comfy/client.ts');
-const { targetSize, withMask } = await import('../src/restyle/job.ts');
+const { sizesFor, targetSize, withMask } = await import('../src/restyle/job.ts');
 const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
 
 const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip_l.safetensors', vae: 'ae.safetensors', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -89,6 +89,17 @@ test('a result is kept at the size asked for, never past 8192 pixels', () => {
   assert.deepEqual(targetSize('4x', [2048, 2048]), [8192, 8192]);
   assert.deepEqual(targetSize('original', [768, 768], [3000, 3000]), [3000, 3000]);
   assert.deepEqual(targetSize('original', [768, 768]), [768, 768]);
+});
+
+test('Complete the figure draws a taller picture, and a picture with no figure goes back to its own shape', () => {
+  const o = { size: 'original', type: 'render3d', quality: 'auto' } as const;
+  const picture: [number, number] = [1200, 800];
+  const taller = sizesFor(picture, true, o, picture);
+  const plain = sizesFor(picture, false, o, picture);
+  assert.ok(taller.h / taller.w > plain.h / plain.w * 1.4, 'the picture is given room below');
+  assert.deepEqual([taller.tw, taller.th], [1200, 1256], 'kept at the original width, in the taller shape');
+  assert.deepEqual([plain.tw, plain.th], picture, 'the shape of the picture it was given');
+  assert.ok(Math.abs(plain.w / plain.h - 1.5) < 0.05);
 });
 
 test('names: a subject from a file name, a token\'s account, a zip\'s folders', () => {

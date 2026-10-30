@@ -32,6 +32,14 @@ export function targetSize(size: RestyleResult['options']['size'], drawn: [numbe
   return [Math.round(w * k), Math.round(h * k)];
 }
 
+/** The sizes a picture is drawn and kept at; with `more`, the height Complete the figure adds below it. */
+export function sizesFor(picture: [number, number], more: boolean, o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
+  const height = picture[1] + (more ? growthOf(picture[1]) : 0);
+  const [w, h] = drawSize(picture[0] / height, qualityOf(o).size);
+  const [tw, th] = targetSize(o.size, [w, h], original && more ? [original[0], Math.round((original[1] * height) / picture[1])] : original);
+  return { w, h, tw, th };
+}
+
 /** A picture with a mask (white kept) as its transparency. Opaque first and the mask joined after, in two
  * steps: in one, sharp strips the alpha that was just joined. */
 export async function withMask(png: Buffer, mask: Buffer) {
@@ -98,13 +106,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (!info.inpaint) throw new Error('This ComfyUI cannot inpaint, which Complete the figure needs: its Phansora API has to allow InpaintModelConditioning, DifferentialDiffusion and ImageToMask.');
       if (!byModel) throw new Error('Complete the figure needs the background-removal model, to cut the subject out before the missing part is drawn.');
     }
-    const height = meta.height! + (o.complete ? growthOf(meta.height!) : 0);
-    const [w, h] = drawSize(meta.width! / height, quality.size);
-    const original = input?.originalSize;
-    const [tw, th] = targetSize(o.size, [w, h], original && o.complete ? [original[0], Math.round((original[1] * height) / meta.height!)] : original);
+    let { w, h, tw, th } = sizesFor([meta.width!, meta.height!], o.complete, o, input?.originalSize);
     const clearing = o.background !== 'white' || byModel;
     const byColor = clearing && pictureLed && !removal;
-    const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
+    let enlarges = tw > w && o.enhance && info.upscalers.length > 0;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
       ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
@@ -153,8 +158,12 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     // the missing part, drawn by an inpaint from a description of it, and the picture's own pixels laid back
     let completed: DrawSettings['completed'];
-    if (o.complete) {
-      if (!startCutout) throw new Error('Complete the figure needs the background-removal model to find the subject in the picture, and it found none.');
+    if (o.complete && !startCutout) {
+      // nothing stands out of its picture (a hall, a landscape): there is no figure to finish, so it is drawn as it is
+      warnings.push('No figure found in this picture, so nothing was added below it: drawn as it is.');
+      ({ w, h, tw, th } = sizesFor([meta.width!, meta.height!], false, o, input?.originalSize));
+      enlarges = tw > w && o.enhance && info.upscalers.length > 0;
+    } else if (o.complete) {
       const subjectOnly = startPicture as Buffer;
       stage('Describing the missing part');
       const described = await readLowerHalf(subjectOnly, signal);
