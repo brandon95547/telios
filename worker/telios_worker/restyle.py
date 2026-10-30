@@ -148,17 +148,24 @@ def pick_key(path):
 
 
 def ground(path, out, color='#00ff00', least=0.01):
-    """A picture's white ground (the white that reaches its edges) painted in `color`: redrawn from a
-    picture on white, FLUX keeps the white ground whatever it is asked, but it keeps any other one."""
+    """A picture's plain ground (the one color that fills its edges: white, black, any) painted in
+    `color`: redrawn from a picture on white or black, FLUX keeps that ground whatever it is asked
+    (a black one in the middle and a green frame round it comes out a murky teal), but it keeps
+    any other. A picture whose edges are not one plain color has no ground to paint."""
     rgb = np.asarray(ImageOps.exif_transpose(Image.open(path)).convert('RGB')).astype(np.float64)
-    low = rgb.min(axis=2)
-    labels, n = ndimage.label(low > 235)
-    edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])).tolist()) - {0}
-    region = np.isin(labels, list(edge)) if edge else np.zeros(low.shape, bool)
-    if region.mean() < least:   # no ground to speak of: a picture that fills its frame
+    edges = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+    base = np.median(edges, axis=0)
+    if (np.linalg.norm(edges - base, axis=1) < 30).mean() < 0.7:   # the edges are the art itself
         Image.fromarray(rgb.round().astype(np.uint8)).save(out)
         return {'ground': 0.0}
-    amount = np.where(ndimage.binary_dilation(region, iterations=2), np.clip((low - 200) / 55, 0, 1), 0)[..., None]
+    away = np.linalg.norm(rgb - base, axis=2)
+    labels, n = ndimage.label(away < 30)
+    edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])).tolist()) - {0}
+    region = np.isin(labels, list(edge)) if edge else np.zeros(away.shape, bool)
+    if region.mean() < least or region.mean() > 0.97:   # none, or the whole picture is one color
+        Image.fromarray(rgb.round().astype(np.uint8)).save(out)
+        return {'ground': 0.0}
+    amount = np.where(ndimage.binary_dilation(region, iterations=2), np.clip((50 - away) / 25, 0, 1), 0)[..., None]
     key = np.array([int(color[i:i + 2], 16) for i in (1, 3, 5)], np.float64)
     Image.fromarray((rgb * (1 - amount) + key * amount).round().astype(np.uint8)).save(out)
     return {'ground': round(float(region.mean()), 4)}
@@ -249,6 +256,12 @@ def chroma(path, out, color='green', island=0.0005, hole=0.001, reach=24):
         ratio = colors[..., 2] / np.maximum(colors[..., 0], 1)
         held = 1 - _smooth(ratio, 1.2, 1.5)
         colors[..., 2] = np.where(warm, colors[..., 2] - held * (colors[..., 2] - np.minimum(colors[..., 2], 0.8 * cr)), colors[..., 2])
+    # a small scrap against the edge of the picture, apart from the figure, is backdrop that got through
+    labels, sizes, edge = regions(alpha > 0.5)
+    if len(sizes) > 1:
+        biggest = int(np.argmax(sizes)) + 1
+        scraps = [i for i in edge if i and i != biggest and sizes[i - 1] < 0.05 * sizes[biggest - 1]]
+        alpha = np.where(np.isin(labels, scraps), 0.0, alpha)
     Image.fromarray(np.dstack([np.clip(colors, 0, 255), alpha * 255]).round().astype(np.uint8)).save(out)
     return {'size': [w, h], 'clear': round(float((alpha < 0.02).mean()), 4), 'partly': round(float(((alpha >= 0.02) & (alpha <= 0.98)).mean()), 4)}
 

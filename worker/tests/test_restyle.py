@@ -151,6 +151,16 @@ class Chroma(unittest.TestCase):
         chroma(self.src, self.out, 'green')
         self.assertEqual(self.alpha()[90, 114], 255)
 
+    def test_a_scrap_against_the_edge_goes_but_a_piece_floating_beside_the_figure_stays(self):
+        rgb = self.scene()
+        rgb[234:240, 234:240] = (120, 120, 110)    # a gray scrap in the corner, touching the edge
+        rgb[200:206, 20:26] = (240, 140, 60)       # a small piece apart from the figure, clear of the edges
+        Image.fromarray(rgb.round().astype(np.uint8)).save(self.src)
+        chroma(self.src, self.out, 'green')
+        a = self.alpha()
+        self.assertTrue((a[234:240, 234:240] == 0).all())
+        self.assertTrue((a[200:206, 20:26] == 255).all())
+
     def test_a_strand_that_is_half_backdrop_comes_out_orange_not_olive(self):
         self.scene()
         chroma(self.src, self.out, 'green')
@@ -200,11 +210,40 @@ class KeyChoice(unittest.TestCase):
         self.assertEqual(got.getpixel((2, 2)), (0, 255, 0))
         self.assertEqual(got.getpixel((40, 40)), (200, 30, 30))
 
+    def test_a_black_ground_is_painted_too_and_the_dark_art_inside_it_is_not(self):
+        im = Image.new('RGB', (80, 80), (4, 4, 6))
+        for x in range(30, 50):
+            for y in range(30, 50):
+                im.putpixel((x, y), (220, 170, 40))   # a gold mask on black
+        for x in range(38, 42):
+            for y in range(38, 42):
+                im.putpixel((x, y), (2, 2, 2))        # a dark eye inside it, not part of the ground
+        im.save(self.src)
+        out = os.path.join(self.dir, 'g.png')
+        self.assertGreater(ground(self.src, out, '#00ff00')['ground'], 0.8)
+        got = Image.open(out)
+        self.assertEqual(got.getpixel((2, 2)), (0, 255, 0))
+        self.assertEqual(got.getpixel((35, 35)), (220, 170, 40))
+        self.assertEqual(got.getpixel((40, 40)), (2, 2, 2))   # enclosed, so not reached from the edges
+
     def test_a_picture_that_fills_its_frame_has_no_ground_to_paint(self):
-        Image.new('RGB', (40, 40), (90, 40, 30)).save(self.src)
+        ramp = np.tile(np.linspace(0, 255, 60).astype(np.uint8), (60, 1))   # edges that are not one plain color
+        Image.fromarray(np.dstack([ramp, ramp, ramp])).save(self.src)
         out = os.path.join(self.dir, 'g.png')
         self.assertEqual(ground(self.src, out)['ground'], 0.0)
-        self.assertEqual(Image.open(out).getpixel((2, 2)), (90, 40, 30))
+        self.assertEqual(Image.open(out).getpixel((2, 2)), Image.open(self.src).getpixel((2, 2)))   # left as it was
+        Image.new('RGB', (40, 40), (90, 40, 30)).save(self.src)         # one color all over: nothing to tell ground from art
+        self.assertEqual(ground(self.src, out)['ground'], 0.0)
+        # dark clothes that reach the bottom edge are not the black ground
+        im = Image.new('RGB', (80, 80), (0, 0, 0))
+        for x in range(25, 55):
+            for y in range(20, 80):
+                im.putpixel((x, y), (36, 34, 40))
+        im.save(self.src)
+        self.assertGreater(ground(self.src, out)['ground'], 0.4)
+        got = Image.open(out)
+        self.assertEqual(got.getpixel((3, 3)), (0, 255, 0))
+        self.assertEqual(got.getpixel((40, 70)), (36, 34, 40))
 
 
 class Pack(unittest.TestCase):
