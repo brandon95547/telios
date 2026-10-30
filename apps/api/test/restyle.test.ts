@@ -298,18 +298,19 @@ test('a picture added before hashes were kept is still recognized, and gets its 
 
 const { CLOSENESS, WHOLE_PAD } = await import('@telios/shared');
 
-test('Draw it whole: a new, complete subject, set in white space, not a copy of the crop', () => {
+test('Draw it whole: the main subject, complete, set in white space, with what it shows left to the picture', () => {
   assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'whole');
   assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
   const whole = restylePrompt({ ...DEFAULT_OPTIONS, type: 'render3d', closeness: 'whole' }, 'a crying freckled girl with copper-red hair');
-  assert.match(whole, /3D rendered illustration of a crying freckled girl with copper-red hair\./);
-  assert.match(whole, /shown complete and uncropped.*nothing is cut off by the edge of the picture.*whole head and hair/);
-  assert.doesNotMatch(restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced' }, 'x'), /uncropped/);
-  // it is the freest of the four, so the crop does not pull the drawing back to its own framing
-  for (const type of ['clipart', 'lineart', 'illustration', 'render3d'] as const) {
-    const free = CLOSENESS.find((c) => c.value === 'whole')!.denoise[type];
-    assert.ok(free >= CLOSENESS.find((c) => c.value === 'loose')!.denoise[type], type);
-  }
+  assert.match(whole, /^A 3D rendered illustration of the main subject, shown whole\./);
+  assert.match(whole, /Nothing is cut off, centered with empty space around it\./);
+  assert.doesNotMatch(whole, /freckled|copper/);
+  assert.doesNotMatch(restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced' }, 'x'), /Nothing is cut off/);
+  // illustration and 3D keep the picture's pose, facing and age (0.80); clip art and line art, which
+  // must change how everything is drawn, stay as free as Loosely
+  const denoise = (value: string, type: 'clipart' | 'lineart' | 'illustration' | 'render3d') => CLOSENESS.find((c) => c.value === value)!.denoise[type];
+  for (const type of ['illustration', 'render3d'] as const) assert.equal(denoise('whole', type), 0.8, type);
+  for (const type of ['clipart', 'lineart'] as const) assert.ok(denoise('whole', type) >= denoise('loose', type), type);
   assert.ok(WHOLE_PAD > 0.2 && WHOLE_PAD < 0.6);
   assert.ok(CLOSENESS.every((c) => c.hint.length > 10));
 });

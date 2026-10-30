@@ -23,12 +23,14 @@ export const KEY_HEX: Record<KeyColor, string> = { green: '#00ff00', blue: '#000
 const KEYED = (color: KeyColor) => `Isolated on a solid flat pure bright ${color} (${KEY_HEX[color].toUpperCase()}) background, one uniform color from edge to edge, with no gradient, no floor, no wall and no cast shadow. The subject floats in empty space with nothing beneath it, and is lit by neutral white light with no ${color} reflected on it.`;
 const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
-// Draw it whole (closeness `whole`): a subject the original cuts off is drawn complete.
-const WHOLE = 'The whole subject is shown complete and uncropped, as a new composition: nothing is cut off by the edge of the picture (a character has its whole head and hair), centered with empty space around it.';
+// Draw it whole (closeness `whole`): a subject the original cuts off is drawn complete. What the
+// subject is is not said: the picture, redrawn from part of the way, carries it.
+const WHOLE_SUBJECT = 'the main subject, shown whole';
+const WHOLE = 'Nothing is cut off, centered with empty space around it.';
 
 export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor) {
   // a phrase the model wrote starts with a capital; inside the sentence it should not
-  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
+  const what = o.closeness === 'whole' ? WHOLE_SUBJECT : subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
   const parts = [TYPE_WORDS[o.type](what)];
   if (o.closeness === 'whole') parts.push(WHOLE);
   const style = findStyle(o.style);

@@ -48,10 +48,12 @@ export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise
   { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.6, render3d: 0.75 } },
   { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.75, render3d: 0.85 } },
   { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.88, render3d: 0.92 } },
-  // Draws a new subject from what the picture shows, with room round it, so a head or figure the
-  // original cuts off at its edge comes out whole instead of cut off again. Tried on prod's FLUX:
-  // a close-up crop padded 35% with white at 0.92 gave a complete head and hair on a clean ground.
-  { value: 'whole', label: 'Draw it whole', hint: 'If the original is cut off (a head or a figure at the edge of the picture), draws a new, complete character or scene, not a copy of the crop.', denoise: { clipart: 0.94, lineart: 0.92, illustration: 0.92, render3d: 0.92 } },
+  // Draws a new subject from the picture, with room round it, so a head or figure the original cuts
+  // off at its edge comes out whole instead of cut off again. The prompt does not describe the
+  // subject: the picture carries it. Illustration and 3D are redrawn from 0.80 of the way, which keeps
+  // the picture's pose, the way it faces and its age (at 0.92 a seated old man came out a boy facing
+  // front); clip art and line art, which must change how everything is drawn, stay as free as before.
+  { value: 'whole', label: 'Draw it whole', hint: 'If the original is cut off (a head or a figure at the edge of the picture), draws a new, complete character or scene, not a copy of the crop.', denoise: { clipart: 0.94, lineart: 0.92, illustration: 0.8, render3d: 0.8 } },
 ];
 /** How much white is added round a picture drawn whole, as a share of its longer side, each side. */
 export const WHOLE_PAD = 0.35;
@@ -127,8 +129,6 @@ export interface RestyleInput {
   subject?: string;
   /** SHA-256 of the picture as added, so the same picture is not added twice. */
   hash?: string;
-  /** What it shows described as a complete subject (colors and all), for Draw it whole. */
-  subjectWhole?: string;
 }
 
 export type ResultStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';

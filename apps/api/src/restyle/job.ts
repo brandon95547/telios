@@ -13,7 +13,7 @@ import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
-import { readSubject, readWholeSubject } from './subject.ts';
+import { readSubject } from './subject.ts';
 import { getInput, rel, resultDir, updateInput, updateResult } from './store.ts';
 
 export const MAX_SIDE = 8192;
@@ -68,17 +68,17 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const source = fs.readFileSync(path.join(dir, 'source.png'));
     const meta = await sharp(source).metadata();
 
-    // what it shows: read once per input, kept with it. Drawn whole, the subject is described as a
-    // complete one, with its colors, since what the picture cuts off is to be drawn new.
+    // what it shows: read once per input, kept with it. Drawn whole it is not read: the prompt does not
+    // describe the subject, the redrawn picture carries it.
     const whole = o.closeness === 'whole';
     const input = getInput(r.inputId);
-    let subject = whole ? input?.subjectWhole ?? input?.subject : input?.subject;
-    if (!subject || (whole && !input?.subjectWhole)) {
+    let subject = input?.subject;
+    if (!whole && !subject) {
       stage('Reading the picture');
-      const read = whole ? await readWholeSubject(source, signal) : await readSubject(source, signal);
+      const read = await readSubject(source, signal);
       if (read) {
         subject = read;
-        if (input) updateInput(input.id, (i) => { if (whole) i.subjectWhole = read; else i.subject = read; });
+        if (input) updateInput(input.id, (i) => { i.subject = read; });
       }
     }
     // a picture of something (a character, an object) is cut out of its ground by a model; without one
