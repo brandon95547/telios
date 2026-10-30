@@ -290,5 +290,19 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .viewer-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .downloads-inline { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--soft); }
 .downloads-inline a { font-weight: 600; }
-.prompt { margin-top: 10px; font-size: 13px; color: #39433f; }
-.prompt summary { cursor: pointer; color: var(--soft); }
+.viewer-settings { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.viewer-settings h3 { margin: 0 0 8px; font-size: 13.5px; color: var(--soft); font-weight: 600; }
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 22px; margin: 0; }
+.settings dt { font-size: 12.5px; color: var(--soft); }
+.settings dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.prompt-peek { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 12px; padding: 8px 12px; text-align: left; font-size: 13.5px; }
+.prompt-peek b { flex: none; font-weight: 600; }
+.prompt-peek-text { flex: 1; min-width: 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-peek-more { flex: none; color: var(--deep-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.prompt-dialog { border: 0; border-radius: 10px; padding: 0; width: min(780px, 92vw); max-height: 86vh; color: var(--ink); background: var(--panel); }
+.prompt-dialog::backdrop { background: rgba(10, 16, 14, 0.62); }
+.prompt-dialog-body { display: flex; flex-direction: column; max-height: 86vh; padding: 14px 18px 16px; }
+.prompt-dialog-head { display: flex; align-items: center; gap: 12px; }
+.prompt-dialog-head h3 { margin: 0; font-size: 15px; }
+.prompt-text { margin: 12px 0; padding: 12px 14px; overflow: auto; background: #f4f5f4; border-radius: 8px; font: 13.5px/1.55 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.prompt-dialog-foot { display: flex; align-items: center; gap: 10px; }

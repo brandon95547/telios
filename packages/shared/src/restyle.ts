@@ -133,6 +133,30 @@ export interface RestyleInput {
 
 export type ResultStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
 
+/** What ComfyUI was given for a result and how it was cut out and sized, kept with the result so the
+ * preview can say what drew it. */
+export interface DrawSettings {
+  /** The FLUX model file. */
+  model: string;
+  /** The size it was drawn at. */
+  width: number;
+  height: number;
+  steps: number;
+  /** How far from the original it was redrawn (the sampler's denoise). */
+  denoise: number;
+  guidance: number;
+  sampler: string;
+  scheduler: string;
+  /** EasyCache's reuse threshold; 0 is off. */
+  easycache: number;
+  /** The style picture USO was given: the style it stands for and its strength. */
+  styleReference?: { style: string; weight: number };
+  /** How the background was made clear: by a model (`with` its file), by color (`with` what from), or not. */
+  cutout?: { by: 'model' | 'color' | 'none'; with?: string };
+  /** The upscaling model that enlarged it, when one did. */
+  enlargedWith?: string;
+}
+
 export interface RestyleResult {
   id: string;
   batchId: string;
@@ -152,6 +176,7 @@ export interface RestyleResult {
   finishedAt?: string;
   seed?: number;
   prompt?: string;
+  settings?: DrawSettings;
   size?: [number, number];
   /** Paths inside the data folder. */
   files?: { png: string; svg?: string; thumb: string; view: string; original: string };
@@ -196,4 +221,36 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   return o;
+}
+
+export interface SettingRow { label: string; value: string }
+
+const trim = (n: number) => String(Math.round(n * 1000) / 1000);
+const SIZE_WORDS: Record<RestyleOptions['size'], string> = { drawn: 'as drawn', original: 'original size', '2x': '2× as drawn', '4x': '4× as drawn' };
+
+/** A result's settings as the preview says them, in plain words. What was only recorded later is left
+ * out of a result that predates it, never guessed. */
+export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'seed' | 'size'>): SettingRow[] {
+  const o = r.options;
+  const s = r.settings;
+  const q = qualityOf(o);
+  const rows: SettingRow[] = [];
+  rows.push({ label: 'Drawn at', value: s ? `${s.width} × ${s.height} px, ${s.steps} steps (${q.label})` : `${q.label}: ${q.size} px, ${q.steps} steps` });
+  rows.push({ label: 'Follow the original', value: `${CLOSENESS.find((c) => c.value === o.closeness)?.label ?? o.closeness}${s ? `, denoise ${trim(s.denoise)}` : ''}` });
+  if (s) {
+    rows.push({ label: 'Model', value: s.model });
+    rows.push({ label: 'Prompt strength', value: `guidance ${trim(s.guidance)}` });
+    rows.push({ label: 'Sampler', value: `${s.sampler}, ${s.scheduler}${s.easycache > 0 ? `, EasyCache ${trim(s.easycache)}` : ''}` });
+  }
+  if (r.seed !== undefined) rows.push({ label: 'Seed', value: String(r.seed) });
+  if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
+  else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
+  const clear = o.background === 'black' ? 'Black' : 'Transparent';
+  const c = s?.cutout;
+  rows.push({
+    label: 'Background',
+    value: o.background === 'white' ? 'White' : !c ? clear : c.by === 'model' ? `${clear}, cut out by a model (${c.with})` : c.by === 'color' ? `${clear}, cleared by color${c.with ? ` from ${c.with}` : ''}` : `${clear}, not cleared`,
+  });
+  if (r.size) rows.push({ label: 'Kept as', value: `${o.format.toUpperCase()}, ${SIZE_WORDS[o.size]}, ${r.size[0]} × ${r.size[1]} px${s?.enlargedWith ? `, enlarged with ${s.enlargedWith}` : ''}` });
+  return rows;
 }

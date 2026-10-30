@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { CLOSENESS, WHOLE_PAD, findStyle, qualityOf, typeInfo, wantsStyleReference, type RestyleResult } from '@telios/shared';
+import { CLOSENESS, WHOLE_PAD, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
@@ -123,6 +123,13 @@ export async function drawResult(id: string, signal: AbortSignal) {
         warnings.push(`Drawn without a style reference: ${lacking}, so the style comes from words alone.`);
       }
     }
+    // what ComfyUI is given, kept with the result for the preview to show (the cutout and any enlargement are added below)
+    const settings: DrawSettings = {
+      model: info.flux.unet, width: w, height: h, steps: quality.steps, denoise, guidance: info.flux.guidance,
+      sampler: info.flux.sampler, scheduler: info.flux.scheduler, easycache: info.flux.easycache,
+      ...(style && { styleReference: { style: o.style, weight: style.weight } }),
+    };
+    updateResult(id, (x) => { x.settings = settings; });
     let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
 
     if (clearing) {
@@ -131,10 +138,12 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (info.backgroundRemoval && (o.type === 'illustration' || o.type === 'render3d')) {
         const mask = await comfy().run(cutoutWorkflow(info.backgroundRemoval), { 'picture.png': png }, signal);
         png = await withMask(png, mask);
+        settings.cutout = { by: 'model', with: info.backgroundRemoval };
       } else if (key) {
         fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
         const cut = await python(['chroma', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), '--color', key]);
         cleared = cut.clear >= MIN_CLEAR;
+        settings.cutout = cleared ? { by: 'color', with: `a flat ${key} backdrop` } : { by: 'none' };
         if (cleared) png = fs.readFileSync(path.join(scratch, 'clear.png'));
         else warnings.push(`The background was not cleared: the picture came out without a plain ${key} backdrop to cut it from.`);
       } else {
@@ -143,6 +152,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
         const isFrame = o.type === 'clipart' || o.type === 'lineart';
         await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), ...(o.type === 'lineart' ? ['--everything'] : []), ...(isFrame && !whole ? [] : ['--no-window'])]);
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
+        settings.cutout = { by: 'color', with: o.type === 'lineart' ? 'white, keeping the ink' : 'white' };
       }
       if (cleared) {
         // drawn whole on a clear ground, it is cut to what is drawn, with a small margin
@@ -167,6 +177,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       const scale = Math.min(4, tw / dw);
       const colors = await sharp(png).flatten({ background: o.background === 'black' ? '#000' : '#fff' }).png().toBuffer();
       const big = await comfy().run(upscaleWorkflow(info.upscalers[0], scale), { 'picture.png': colors }, signal);
+      settings.enlargedWith = info.upscalers[0];
       const sized = sharp(big).resize(tw, th, { fit: 'fill' });
       png = o.background === 'transparent'
         ? await withMask(await sized.png().toBuffer(), await sharp(png).extractChannel('alpha').resize(tw, th, { fit: 'fill' }).png().toBuffer())
@@ -190,6 +201,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
     updateResult(id, (x) => {
       x.status = 'done';
+      x.settings = settings;
       if (warnings.length) x.warning = warnings.join(' ');
       delete x.stage;
       x.finishedAt = new Date().toISOString();

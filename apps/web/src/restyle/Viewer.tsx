@@ -1,15 +1,19 @@
-import { useEffect } from 'react';
-import { findStyle, findTheme, typeInfo, type RestyleResult } from '@telios/shared';
+import { useEffect, useState } from 'react';
+import { findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
 import { api, restyle } from '../api.ts';
+import { PromptDialog } from './PromptDialog.tsx';
 
-/** One result large, beside its original: arrows for the next, Space to tick it, Escape to close. */
+/** One result large, beside its original: arrows for the next, Space to tick it, Escape to close; under
+ * them the settings it was drawn with, and its prompt, which opens in a dialog. */
 export function Viewer({ results, index, setIndex, selected, toggle, onClose }: {
   results: RestyleResult[]; index: number; setIndex: (i: number) => void;
   selected: Set<string>; toggle: (id: string) => void; onClose: () => void;
 }) {
   const r = results[index];
+  const [promptOpen, setPromptOpen] = useState(false);
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
+      if (promptOpen) return;   // the prompt's dialog has the keys: Escape closes only it
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowRight') setIndex(Math.min(results.length - 1, index + 1));
       else if (e.key === 'ArrowLeft') setIndex(Math.max(0, index - 1));
@@ -17,7 +21,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
     };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
-  }, [index, results.length, r, onClose, setIndex, toggle]);
+  }, [index, results.length, r, onClose, setIndex, toggle, promptOpen]);
   if (!r?.files) return null;
   const o = r.options;
   const ground = o.background === 'black' ? 'black' : o.background === 'white' ? 'white' : 'checker';
@@ -54,7 +58,20 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
           </span>
           <button type="button" disabled={index === results.length - 1} onClick={() => setIndex(index + 1)}>Next →</button>
         </div>
-        {r.prompt && <details className="prompt"><summary>What ComfyUI was asked</summary><p>{r.prompt}</p><p className="sub">Seed {r.seed}</p></details>}
+        <section className="viewer-settings" aria-label="Settings used">
+          <h3>Settings used</h3>
+          <dl className="settings">
+            {settingRows(r).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+          </dl>
+          {r.prompt && (
+            <button type="button" className="prompt-peek" onClick={() => setPromptOpen(true)} aria-haspopup="dialog">
+              <b>What ComfyUI was asked</b>
+              <span className="prompt-peek-text">{r.prompt}</span>
+              <span className="prompt-peek-more">View full prompt</span>
+            </button>
+          )}
+        </section>
+        {promptOpen && r.prompt && <PromptDialog prompt={r.prompt} seed={r.seed} onClose={() => setPromptOpen(false)} />}
       </div>
     </div>
   );
