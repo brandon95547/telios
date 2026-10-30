@@ -18,6 +18,7 @@ import { modelHealth, provider } from './engine/llm.ts';
 import { exportRun, parseColors, type Format } from './export.ts';
 import type { FromWorker, ToWorker } from './worker/main.ts';
 import { comfy } from './comfy/client.ts';
+import { availableReferences } from './restyle/references.ts';
 import { restyleRoutes } from './restyle/routes.ts';
 import { authRoutes, requireSession } from './auth.ts';
 
@@ -57,7 +58,9 @@ app.get('/api/health', wrap(async (req, res) => {
   res.json({
     ok: true, effort: DRAW_EFFORT, maxRenders: MAX_RENDERS,
     model: { ok: model.ok, provider: model.provider, label: model.label, name: model.model, error: model.error },
-    comfy: { via: drawing.via, ready: drawing.ready, detail: drawing.detail, model: drawing.flux?.unet ?? '', upscale: drawing.upscalers.length > 0, cutout: !!drawing.backgroundRemoval },
+    comfy: { via: drawing.via, ready: drawing.ready, detail: drawing.detail, model: drawing.flux?.unet ?? '', upscale: drawing.upscalers.length > 0, cutout: !!drawing.backgroundRemoval, styleReference: drawing.styleReference },
+    // the styles that are drawn with a reference picture, and have theirs in the data folder
+    styleReferences: availableReferences(),
     python: fs.existsSync(PYTHON),
   });
 }));

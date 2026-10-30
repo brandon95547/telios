@@ -103,6 +103,7 @@ def main(argv=None):
     k.add_argument('out')
     k.add_argument('--ground', default='white', choices=['white', 'black'])
     k.add_argument('--everything', action='store_true')
+    k.add_argument('--no-window', action='store_true', help='no enclosed patch is cleared: a character, not a frame')
     pk = sub.add_parser('pack')
     pk.add_argument('manifest')
     pk.add_argument('out')
@@ -142,7 +143,7 @@ def main(argv=None):
             elif args.cmd == 'whiten':
                 out(restyle.whiten(args.source, args.out))
             elif args.cmd == 'key':
-                out(restyle.key(args.source, args.out, args.ground, args.everything))
+                out(restyle.key(args.source, args.out, args.ground, args.everything, window=2.0 if args.no_window else 0.04))
             else:
                 out(restyle.pack(json.load(open(args.manifest)), args.out))
     except Exception as e:  # reported to the job worker, which shows it

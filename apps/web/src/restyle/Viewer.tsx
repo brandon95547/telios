@@ -34,6 +34,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
           <span className="sub">{index + 1} of {results.length}</span>
           <button type="button" className="quiet" onClick={onClose} aria-label="Close">✕</button>
         </div>
+        {r.warning && <p className="warn-line">{r.warning}</p>}
         <div className="viewer-pair">
           <figure>
             <img src={api.file(r.files.original)} alt="The original" />

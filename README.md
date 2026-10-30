@@ -56,6 +56,19 @@ color. With an upscaling model (4x-UltraSharp), Enhance details enlarges with de
 NVIDIA A4000 a picture takes about 30 seconds, and the first after a pause about a minute more
 (the models are loaded again).
 
+Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
+them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,
+Rococo and Realistic Anime (`STYLE_REFERENCES` in `packages/shared/src/restyle.ts`, each with how
+strongly it is applied). That is for 2D and 3D illustrations; clip art and line art are drawn from
+words, so their flat, outlined look stays clean for tracing. The picture goes to ComfyUI beside the original, through USO, ByteDance's
+style reference for FLUX: it takes the picture's color, brushwork and texture, not what it shows.
+The pictures are not in the repository: put one per style in `data/style-references/`, named by the
+style's id (`fauvism.webp`, `neo-expressionism.webp`; PNG or JPEG also work, and a large one is made
+small before it is sent). The options panel says when a style has no picture on this server, or
+ComfyUI has no USO files, and the result is then drawn from words alone and says so. USO's files
+(about 1.4 GB) are fetched with the other models when Telios runs standalone; a Phansora API's
+ComfyUI already has them.
+
 Talari's choices (art styles, substyles, mediums, themes, and the words FLUX is given for each)
 are kept in `packages/shared/src/catalog.ts`, written from Phansora's own lists by
 `npm run sync:catalog` when `../phansora` and `../phansora-api` are beside this folder.

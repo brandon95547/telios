@@ -5,7 +5,8 @@ Phansora's docker/comfyui/fetch_models.py.
 
 Required: FLUX.1 Dev (quantized, GGUF), its two text encoders and its autoencoder, about 12 GB,
 without which nothing is drawn. Optional: BiRefNet, which cuts a 2D or 3D illustration out of
-its background, and 4x-UltraSharp, which enlarges with detail (Enhance details). An optional
+its background, 4x-UltraSharp, which enlarges with detail (Enhance details), and USO's three files
+(about 1.4 GB), which draw the styles that need a reference picture. An optional
 file that cannot be fetched is skipped with a warning; the next start tries again. None of them
 needs a Hugging Face login.
 
@@ -51,6 +52,7 @@ def wanted(env: dict[str, str]) -> list[Model]:
     clip_l = env.get("FLUX_CLIP_L_FILE") or "clip_l.safetensors"
     vae = env.get("FLUX_VAE_FILE") or "ae.safetensors"
     encoders = f"{HF}/comfyanonymous/flux_text_encoders/resolve/main"
+    uso = f"{HF}/Comfy-Org/USO_1.0_Repackaged/resolve/main/split_files"
     return [
         Model("diffusion_models", unet, env.get("FLUX_UNET_URL") or f"{HF}/city96/FLUX.1-dev-gguf/resolve/main/{unet}"),
         Model("text_encoders", t5, env.get("FLUX_T5_URL") or f"{encoders}/{t5}"),
@@ -61,6 +63,30 @@ def wanted(env: dict[str, str]) -> list[Model]:
             vae,
             env.get("FLUX_VAE_URL")
             or f"{HF}/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors",
+        ),
+        # A style picture, by USO (ComfyUI's "Flux.1 Dev USO Reference Image Generation"): the vision
+        # model reads the picture (CLIPVisionEncode); USO's LoRA and projector apply its style, not
+        # its subject (LoraLoaderModelOnly, ModelPatchLoader, USOStyleReference).
+        Model(
+            "clip_vision",
+            "sigclip_vision_patch14_384.safetensors",
+            env.get("CLIP_VISION_URL") or f"{HF}/Comfy-Org/sigclip_vision_384/resolve/main/sigclip_vision_patch14_384.safetensors",
+            optional=True,
+            why="Style pictures need it.",
+        ),
+        Model(
+            "loras",
+            "uso-flux1-dit-lora-v1.safetensors",
+            env.get("USO_LORA_URL") or f"{uso}/loras/uso-flux1-dit-lora-v1.safetensors",
+            optional=True,
+            why="Style pictures need it.",
+        ),
+        Model(
+            "model_patches",
+            "uso-flux1-projector-v1.safetensors",
+            env.get("USO_PROJECTOR_URL") or f"{uso}/model_patches/uso-flux1-projector-v1.safetensors",
+            optional=True,
+            why="Style pictures need it.",
         ),
         # Background removal: BiRefNet (the general model, MIT), which ComfyUI runs with its own
         # LoadBackgroundRemovalModel and RemoveBackground nodes. About 444 MB.

@@ -4,6 +4,7 @@
 // loads, and gets back the picture it saves; the results are kept here, never there.
 
 import { COMFYUI_API_TOKEN, COMFYUI_API_URL, COMFYUI_URL, FLUX } from '../config.ts';
+import { USO } from './workflows.ts';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
@@ -28,6 +29,8 @@ export interface ComfyInfo {
   upscalers: string[];
   /** The background removal model file, if ComfyUI has one. */
   backgroundRemoval: string | null;
+  /** Whether ComfyUI can draw from a style picture: USO's three files and its node are there. */
+  styleReference: boolean;
 }
 
 export interface Comfy {
@@ -64,15 +67,15 @@ export function gatewayClient(base: string, token: string): Comfy {
     async info(force = false) {
       if (cached && !force && Date.now() - cached.at < 30_000) return cached.info;
       let info: ComfyInfo;
-      if (!user) info = { via: 'api', ready: false, detail: 'COMFYUI_API_TOKEN is not a Phansora API token.', flux: null, upscalers: [], backgroundRemoval: null };
+      if (!user) info = { via: 'api', ready: false, detail: 'COMFYUI_API_TOKEN is not a Phansora API token.', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
       else {
         try {
           const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
           if (!res.ok) throw await failure(res, 'The Phansora API refused');
           const body = await res.json();
-          info = { via: 'api', ready: !!body.ready && !!body.flux, detail: body.flux ? body.detail : body.detail || 'The API does not draw with FLUX.', flux: body.flux, upscalers: body.upscalers ?? [], backgroundRemoval: body.backgroundRemoval ?? null };
+          info = { via: 'api', ready: !!body.ready && !!body.flux, detail: body.flux ? body.detail : body.detail || 'The API does not draw with FLUX.', flux: body.flux, upscalers: body.upscalers ?? [], backgroundRemoval: body.backgroundRemoval ?? null, styleReference: body.styleReference === true };
         } catch (e) {
-          info = { via: 'api', ready: false, detail: (e as Error).name === 'TimeoutError' ? 'The Phansora API did not answer.' : (e as Error).message, flux: null, upscalers: [], backgroundRemoval: null };
+          info = { via: 'api', ready: false, detail: (e as Error).name === 'TimeoutError' ? 'The Phansora API did not answer.' : (e as Error).message, flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
         }
       }
       cached = { at: Date.now(), info };
@@ -113,7 +116,7 @@ export function localClient(base: string, files: FluxFiles = FLUX): Comfy {
   return {
     async info(force = false) {
       if (cached && !force && Date.now() - cached.at < 30_000) return cached.info;
-      const info: ComfyInfo = { via: 'local', ready: false, detail: '', flux: null, upscalers: [], backgroundRemoval: null };
+      const info: ComfyInfo = { via: 'local', ready: false, detail: '', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
       try {
         await get('/system_stats', 5000);
         const gguf = files.unet.endsWith('.gguf');
@@ -124,6 +127,12 @@ export function localClient(base: string, files: FluxFiles = FLUX): Comfy {
         info.upscalers = choices(await objectInfo('UpscaleModelLoader'), 'UpscaleModelLoader', 'model_name') ?? [];
         const removal = choices(await objectInfo('LoadBackgroundRemovalModel'), 'LoadBackgroundRemovalModel', 'bg_removal_name') ?? [];
         info.backgroundRemoval = removal[0] ?? null;
+        const have = [
+          [USO.lora, choices(await objectInfo('LoraLoaderModelOnly'), 'LoraLoaderModelOnly', 'lora_name')],
+          [USO.projector, choices(await objectInfo('ModelPatchLoader'), 'ModelPatchLoader', 'name')],
+          [USO.vision, choices(await objectInfo('CLIPVisionLoader'), 'CLIPVisionLoader', 'clip_name')],
+        ] as const;
+        info.styleReference = !!(await objectInfo('USOStyleReference'))?.USOStyleReference && have.every(([file, files]) => !!files?.includes(file));
         if (gguf && unets === null) info.detail = 'ComfyUI is missing the GGUF loader (the ComfyUI-GGUF custom node).';
         else if (missing.length) info.detail = `ComfyUI does not have ${missing.join(', ')} yet (still downloading?).`;
         else { info.ready = true; info.flux = files; }

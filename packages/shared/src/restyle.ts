@@ -43,12 +43,39 @@ export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: 
  * Clip art and 3D change how everything is drawn (a gray engraving becomes flat color), so they
  * need more room than line art, which keeps the drawing and only cleans it. Tried on prod's
  * FLUX.1 Dev (Q4_K_S, 16 steps) with scans of engraved frames. */
-export type Closeness = 'close' | 'balanced' | 'loose';
-export const CLOSENESS: { value: Closeness; label: string; denoise: Record<OutputType, number> }[] = [
-  { value: 'close', label: 'Closely', denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.6, render3d: 0.75 } },
-  { value: 'balanced', label: 'Balanced', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.75, render3d: 0.85 } },
-  { value: 'loose', label: 'Loosely', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.88, render3d: 0.92 } },
+export type Closeness = 'close' | 'balanced' | 'loose' | 'whole';
+export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: Record<OutputType, number> }[] = [
+  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.6, render3d: 0.75 } },
+  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.75, render3d: 0.85 } },
+  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.88, render3d: 0.92 } },
+  // Draws a new subject from what the picture shows, with room round it, so a head or figure the
+  // original cuts off at its edge comes out whole instead of cut off again. Tried on prod's FLUX:
+  // a close-up crop padded 35% with white at 0.92 gave a complete head and hair on a clean ground.
+  { value: 'whole', label: 'Draw it whole', hint: 'If the original is cut off (a head or a figure at the edge of the picture), draws a new, complete character or scene, not a copy of the crop.', denoise: { clipart: 0.94, lineart: 0.92, illustration: 0.92, render3d: 0.92 } },
 ];
+/** How much white is added round a picture drawn whole, as a share of its longer side, each side. */
+export const WHOLE_PAD = 0.35;
+
+/** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
+ * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
+ * Keyed by style id; the picture is `style-references/<id>.webp` in the data folder. `weight` is how
+ * strongly it is applied (USO's LoRA strength): 1 is ComfyUI's own template, less lets the words
+ * and the original keep more of their say. From settings tried by hand on prod's FLUX.1 Dev. */
+export const STYLE_REFERENCES: Record<string, { weight: number }> = {
+  biomechanical: { weight: 1 },
+  expressionism: { weight: 0.75 },
+  fauvism: { weight: 0.5 },
+  'neo-expressionism': { weight: 0.5 },
+  impressionism: { weight: 0.75 },
+  rococo: { weight: 1 },
+  'realistic-anime': { weight: 0.75 },
+};
+/** The output types that use it. Clip art and line art keep their flat, outlined look (and trace
+ * cleanly to SVG), which a painted reference shades: tried with Realistic Anime clip art, USO
+ * turned flat color into a shaded painting. */
+export const STYLE_REFERENCE_TYPES: OutputType[] = ['illustration', 'render3d'];
+/** Whether this type and style are drawn with a reference picture. */
+export const wantsStyleReference = (o: { type: OutputType; style: string }) => !!STYLE_REFERENCES[o.style] && STYLE_REFERENCE_TYPES.includes(o.type);
 
 export type Background = 'transparent' | 'white' | 'black';
 /** drawn: the size ComfyUI draws at; original: the input's own size; 2 and 4: the drawn size enlarged. */
@@ -100,6 +127,8 @@ export interface RestyleInput {
   subject?: string;
   /** SHA-256 of the picture as added, so the same picture is not added twice. */
   hash?: string;
+  /** What it shows described as a complete subject (colors and all), for Draw it whole. */
+  subjectWhole?: string;
 }
 
 export type ResultStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
@@ -116,6 +145,8 @@ export interface RestyleResult {
   status: ResultStatus;
   stage?: string;
   error?: string;
+  /** Something the result is not, that was asked for: drawn on white, the background not cleared. */
+  warning?: string;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;

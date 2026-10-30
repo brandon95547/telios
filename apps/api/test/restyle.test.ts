@@ -7,9 +7,9 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-test-'));
-const { cleanOptions, DEFAULT_OPTIONS } = await import('@telios/shared');
+const { cleanOptions, DEFAULT_OPTIONS, STYLE_REFERENCES, wantsStyleReference, findStyle } = await import('@telios/shared');
 const { restylePrompt, subjectFromName } = await import('../src/restyle/prompt.ts');
-const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow } = await import('../src/comfy/workflows.ts');
+const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, USO } = await import('../src/comfy/workflows.ts');
 const { gatewayClient, localClient, tokenUser } = await import('../src/comfy/client.ts');
 const { targetSize } = await import('../src/restyle/job.ts');
 const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
@@ -17,7 +17,7 @@ const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
 const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip_l.safetensors', vae: 'ae.safetensors', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
 // The nodes the Phansora API's gateway runs (phansora-api comfy.GATEWAY_NODES): every workflow
 // Telios builds must keep to them, or the gateway refuses it.
-const GATEWAY_NODES = new Set(['LoadImage', 'ImageScale', 'ImageScaleBy', 'ImageInvert', 'UnetLoaderGGUF', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'CLIPTextEncode', 'FluxGuidance', 'EmptySD3LatentImage', 'VAEEncode', 'VAEDecode', 'KSampler', 'EasyCache', 'LoadBackgroundRemovalModel', 'RemoveBackground', 'MaskToImage', 'UpscaleModelLoader', 'ImageUpscaleWithModel', 'SaveImage']);
+const GATEWAY_NODES = new Set(['LoadImage', 'ImageScale', 'ImageScaleBy', 'ImageInvert', 'UnetLoaderGGUF', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'CLIPTextEncode', 'FluxGuidance', 'EmptySD3LatentImage', 'VAEEncode', 'VAEDecode', 'KSampler', 'EasyCache', 'CLIPVisionLoader', 'CLIPVisionEncode', 'ModelPatchLoader', 'USOStyleReference', 'LoadBackgroundRemovalModel', 'RemoveBackground', 'MaskToImage', 'UpscaleModelLoader', 'ImageUpscaleWithModel', 'SaveImage']);
 
 test('each output type asks for its own look, with the style, theme and background', () => {
   const o = { ...DEFAULT_OPTIONS, type: 'clipart' as const, style: 'art-deco', theme: 'celtic' };
@@ -25,8 +25,9 @@ test('each output type asks for its own look, with the style, theme and backgrou
   assert.match(p, /^Colorful vector clip art of an oval frame with scrolls, in a flat design style/);
   assert.match(p, /art deco style, bold geometric symmetry/);
   assert.match(p, /Celtic and Insular themed/);
-  assert.match(p, /plain pure white background\.$/);
-  assert.match(restylePrompt({ ...o, type: 'render3d', background: 'black' }, 'x'), /3D rendered illustration of x\..*pure white background\.$/);
+  assert.match(p, /plain pure white background, with no floor, no wall and no cast shadow\.$/);
+  assert.match(restylePrompt({ ...o, type: 'render3d', background: 'black' }, 'x'), /3D rendered illustration of x\..*pure white background, with no floor/);
+  assert.match(restylePrompt({ ...o, background: 'white' }, 'x'), /plain pure white background\.$/);   // a white ground is kept, so it needs no stripping
   assert.match(restylePrompt({ ...DEFAULT_OPTIONS, type: 'lineart' }, ''), /line art of the design in the picture/);
   assert.match(restylePrompt(DEFAULT_OPTIONS, 'Rectangular page border'), /clip art of rectangular page border/);
   assert.match(restylePrompt(DEFAULT_OPTIONS, 'A symmetrical ornament'), /clip art of a symmetrical ornament/);
@@ -84,9 +85,40 @@ test('names: a subject from a file name, a token\'s account, a zip\'s folders', 
 // ── Both ways to ComfyUI, against stand-ins ──
 
 let server: http.Server;
+test('seven styles take a reference picture, in the painted types only', () => {
+  assert.deepEqual(Object.keys(STYLE_REFERENCES).sort(), ['biomechanical', 'expressionism', 'fauvism', 'impressionism', 'neo-expressionism', 'realistic-anime', 'rococo']);
+  assert.equal(wantsStyleReference({ type: 'illustration', style: 'fauvism' }), true);
+  assert.equal(wantsStyleReference({ type: 'render3d', style: 'biomechanical' }), true);
+  assert.equal(wantsStyleReference({ type: 'clipart', style: 'realistic-anime' }), false);   // flat and outlined, not shaded
+  assert.equal(wantsStyleReference({ type: 'lineart', style: 'biomechanical' }), false);
+  assert.equal(wantsStyleReference({ type: 'illustration', style: 'tonalism' }), false);     // no picture for it
+  assert.equal(wantsStyleReference({ type: 'illustration', style: '' }), false);
+  for (const id of Object.keys(STYLE_REFERENCES)) assert.ok(findStyle(id), id);              // every one is a style in the catalog
+});
+
+test('a style picture goes through USO, with EasyCache last on the model', () => {
+  const o = { prompt: 'p', width: 768, height: 768, steps: 16, denoise: 0.75, seed: 7, style: { weight: 0.5 } };
+  const w = restyleWorkflow(FLUX, o);
+  for (const node of Object.values(w)) assert.ok(GATEWAY_NODES.has(node.class_type), node.class_type);
+  assert.equal(w['30'].inputs.image, 'style.png');
+  assert.equal(w['31'].inputs.clip_name, USO.vision);
+  assert.deepEqual(w['32'].inputs, { clip_vision: ['31', 0], image: ['30', 0], crop: 'center' });
+  assert.deepEqual(w['33'].inputs, { model: ['1', 0], lora_name: USO.lora, strength_model: 0.5 });
+  assert.equal(w['34'].inputs.name, USO.projector);
+  assert.deepEqual(w['35'].inputs, { model: ['33', 0], model_patch: ['34', 0], clip_vision_output: ['32', 0] });
+  assert.deepEqual(w['12'].inputs.model, ['35', 0]);   // EasyCache caches the steps of the model USO made
+  assert.deepEqual(w['8'].inputs.model, ['12', 0]);
+  assert.deepEqual(restyleWorkflow({ ...FLUX, easycache: 0 }, o)['8'].inputs.model, ['35', 0]);
+  // no style picture: nothing of USO, and the sampler is as it was
+  const plain = restyleWorkflow(FLUX, { ...o, style: undefined });
+  assert.ok(!Object.values(plain).some((n) => ['USOStyleReference', 'CLIPVisionLoader', 'ModelPatchLoader'].includes(n.class_type)));
+  assert.deepEqual(plain['12'].inputs.model, ['1', 0]);
+});
+
 let base = '';
 const seen: { method: string; url: string; headers: http.IncomingHttpHeaders; body: string }[] = [];
 let history = 0;
+let usoFiles = true;   // whether the mock ComfyUI has USO's files
 
 before(async () => {
   server = http.createServer(async (req, res) => {
@@ -96,15 +128,16 @@ before(async () => {
     const json = (status: number, v: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(v)); };
     const url = req.url!;
     // a Phansora API's gateway
-    if (url === '/talari/users/telios/comfyui') return json(200, { ready: true, detail: '', flux: FLUX, upscalers: ['4x-UltraSharp.pth'], backgroundRemoval: null });
+    if (url === '/talari/users/telios/comfyui') return json(200, { ready: true, detail: '', flux: FLUX, upscalers: ['4x-UltraSharp.pth'], backgroundRemoval: null, styleReference: true });
     if (url === '/talari/users/telios/comfyui/run') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end('PICTURE'); }
     if (url === '/talari/users/other/comfyui') return json(403, { detail: 'The ComfyUI lab is not open to this account.' });
     // ComfyUI itself
     if (url === '/system_stats') return json(200, {});
     if (url.startsWith('/object_info/')) {
       const node = url.split('/').pop()!;
-      const field = { UnetLoaderGGUF: 'unet_name', DualCLIPLoader: 'clip_name1', VAELoader: 'vae_name', UpscaleModelLoader: 'model_name' }[node];
-      const have = { UnetLoaderGGUF: [FLUX.unet], DualCLIPLoader: [FLUX.t5, FLUX.clipL], VAELoader: [FLUX.vae], UpscaleModelLoader: [] }[node];
+      const field = { UnetLoaderGGUF: 'unet_name', DualCLIPLoader: 'clip_name1', VAELoader: 'vae_name', UpscaleModelLoader: 'model_name', LoraLoaderModelOnly: 'lora_name', ModelPatchLoader: 'name', CLIPVisionLoader: 'clip_name' }[node];
+      const have = { UnetLoaderGGUF: [FLUX.unet], DualCLIPLoader: [FLUX.t5, FLUX.clipL], VAELoader: [FLUX.vae], UpscaleModelLoader: [], LoraLoaderModelOnly: usoFiles ? [USO.lora] : [], ModelPatchLoader: usoFiles ? [USO.projector] : [], CLIPVisionLoader: usoFiles ? [USO.vision] : [] }[node];
+      if (node === 'USOStyleReference') return json(200, usoFiles ? { USOStyleReference: { input: {} } } : {});
       return json(200, field ? { [node]: { input: { required: { [field]: [have, {}] } } } } : {});
     }
     if (url === '/upload/image') return json(200, { name: 'telios-up.png', subfolder: '', type: 'input' });
@@ -125,6 +158,7 @@ test('through a Phansora API: its files, the token, the pictures as base64', asy
   assert.equal(info.via, 'api');
   assert.equal(info.ready, true);
   assert.equal(info.flux?.unet, FLUX.unet);
+  assert.equal(info.styleReference, true);
   const out = await c.run({ '1': { class_type: 'LoadImage', inputs: { image: 'source.png' } } }, { 'source.png': Buffer.from('hello') });
   assert.equal(out.toString(), 'PICTURE');
   const sent = seen.find((s) => s.url.endsWith('/comfyui/run'))!;
@@ -132,6 +166,7 @@ test('through a Phansora API: its files, the token, the pictures as base64', asy
   assert.equal(JSON.parse(sent.body).images['source.png'], Buffer.from('hello').toString('base64'));
   const refused = await gatewayClient(`${base}/talari`, 'v1.other.1999999999.sig').info();
   assert.equal(refused.ready, false);
+  assert.equal(refused.styleReference, false);
   assert.match(refused.detail, /not open to this account/);
 });
 
@@ -140,6 +175,7 @@ test('Telios\'s own ComfyUI: the upload\'s name in the workflow, the picture bac
   const info = await c.info();
   assert.equal(info.via, 'local');
   assert.equal(info.ready, true, info.detail);
+  assert.equal(info.styleReference, true);
   const out = await c.run(restyleWorkflow(FLUX, { prompt: 'p', width: 768, height: 768, steps: 16, denoise: 0.75, seed: 7 }), { 'source.png': Buffer.from('hello') });
   assert.equal(out.toString(), 'DRAWN');
   const prompt = JSON.parse(seen.find((s) => s.url === '/prompt')!.body).prompt;
@@ -149,6 +185,29 @@ test('Telios\'s own ComfyUI: the upload\'s name in the workflow, the picture bac
   const missing = await localClient(base, { ...FLUX, vae: 'other.safetensors' }).info();
   assert.equal(missing.ready, false);
   assert.match(missing.detail, /other\.safetensors/);
+  usoFiles = false;   // without USO's files, the style pictures are not available, and nothing else changes
+  const without = await localClient(base, FLUX).info();
+  usoFiles = true;
+  assert.equal(without.ready, true);
+  assert.equal(without.styleReference, false);
+});
+
+test('a style\'s reference: its picture, made small, with the strength it is applied at', async () => {
+  const { availableReferences, referenceFor } = await import('../src/restyle/references.ts');
+  const sharp = (await import('sharp')).default;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-refs-'));
+  assert.deepEqual(availableReferences(dir), []);
+  assert.equal(await referenceFor('fauvism', dir), null);               // its picture is not there
+  fs.writeFileSync(path.join(dir, 'fauvism.webp'), await sharp({ create: { width: 2400, height: 1800, channels: 4, background: '#ff0000' } }).webp().toBuffer());
+  fs.writeFileSync(path.join(dir, 'tonalism.png'), 'not drawn with a reference');   // a style that takes none
+  assert.deepEqual(availableReferences(dir), ['fauvism']);
+  const ref = (await referenceFor('fauvism', dir))!;
+  assert.equal(ref.weight, STYLE_REFERENCES.fauvism.weight);
+  const meta = await sharp(ref.png).metadata();
+  assert.equal(meta.format, 'png');
+  assert.deepEqual([meta.width, meta.height], [768, 576]);              // 768 on the long side, whatever was dropped in
+  assert.equal(await referenceFor('tonalism', dir), null);
+  assert.equal(await referenceFor('', dir), null);
 });
 
 // ── The same picture is not added twice ──
@@ -224,4 +283,36 @@ test('a picture added before hashes were kept is still recognized, and gets its 
     assert.deepEqual([res.inputs.length, res.duplicates], [0, ['again']]);
   });
   assert.equal(getInput(id)?.hash?.length, 64);
+});
+
+// ── Draw it whole ──
+
+const { CLOSENESS, WHOLE_PAD } = await import('@telios/shared');
+
+test('Draw it whole: a new, complete subject, set in white space, not a copy of the crop', () => {
+  assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'whole');
+  assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
+  const whole = restylePrompt({ ...DEFAULT_OPTIONS, type: 'render3d', closeness: 'whole' }, 'a crying freckled girl with copper-red hair');
+  assert.match(whole, /3D rendered illustration of a crying freckled girl with copper-red hair\./);
+  assert.match(whole, /shown complete and uncropped.*nothing is cut off by the edge of the picture.*whole head and hair/);
+  assert.doesNotMatch(restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced' }, 'x'), /uncropped/);
+  // it is the freest of the four, so the crop does not pull the drawing back to its own framing
+  for (const type of ['clipart', 'lineart', 'illustration', 'render3d'] as const) {
+    const free = CLOSENESS.find((c) => c.value === 'whole')!.denoise[type];
+    assert.ok(free >= CLOSENESS.find((c) => c.value === 'loose')!.denoise[type], type);
+  }
+  assert.ok(WHOLE_PAD > 0.2 && WHOLE_PAD < 0.6);
+  assert.ok(CLOSENESS.every((c) => c.hint.length > 10));
+});
+
+test('a cleared picture is cut to what is drawn, with a margin', async () => {
+  const { trimToContent } = await import('../src/restyle/job.ts');
+  // a 200 x 300 clear canvas with a 40 x 60 patch drawn in it
+  const patch = await sharp({ create: { width: 40, height: 60, channels: 4, background: '#cc2222' } }).png().toBuffer();
+  const canvas = await sharp({ create: { width: 200, height: 300, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: patch, left: 80, top: 120 }]).png().toBuffer();
+  const trimmed = await sharp(await trimToContent(canvas, 0.1)).metadata();
+  assert.deepEqual([trimmed.width, trimmed.height], [52, 72]);   // 40 + 2 * 6, 60 + 2 * 6
+  // nothing drawn: left as it was
+  const empty = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
+  assert.deepEqual(await trimToContent(empty), empty);
 });

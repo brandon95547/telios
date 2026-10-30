@@ -226,6 +226,7 @@ export function Studio({ health }: { health: Health | null }) {
                     </button>
                     <div className="tile-name">{r.inputName}{r.options.variations > 1 ? ` · v${r.variation}` : ''}</div>
                     <div className="tile-meta">{[typeInfo(r.options.type).label, findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean).join(' · ')}</div>
+                    {r.warning && <div className="tile-warn" title={r.warning}>Drawn on white: background not cleared</div>}
                     {r.files && (
                       <div className="tile-actions">
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>

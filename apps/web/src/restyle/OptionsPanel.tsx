@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, QUALITIES, styleFits, typeInfo, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, QUALITIES, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -63,6 +63,11 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             ))}
           </select>
           {!type.styles ? null : <div className="sub">Only the styles that suit {type.label.toLowerCase()} are listed.</div>}
+          {wantsStyleReference(options) && health && (
+            health.comfy.styleReference && health.styleReferences.includes(options.style)
+              ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>
+              : <div className="sub warn">{health.comfy.styleReference ? 'This style has no reference picture on this server yet' : 'ComfyUI here has no style-reference files (USO) yet'}, so it is drawn from words alone.</div>
+          )}
         </label>
         {options.type === 'illustration' && (
           <label className="field">
@@ -87,6 +92,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         <div className="field">
           <div className="label">Follow the original</div>
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
+          <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
         </div>
         <div className="field">
           <div className="label">Versions of each picture</div>
@@ -130,6 +136,9 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         <div className="field">
           <div className="label">Background</div>
           <Seg label="Background" value={options.background} onChange={(v) => set('background', v)} options={[{ value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }]} />
+          {options.background !== 'white' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
+            <div className="sub warn">ComfyUI here has no background-removal model yet, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on white.</div>
+          )}
         </div>
         <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
           hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />

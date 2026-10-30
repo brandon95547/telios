@@ -10,8 +10,18 @@ export function drawSize(aspect: number, side: number): [number, number] {
   return [snap(w), snap(w / aspect)];
 }
 
-/** Image-to-image with FLUX.1 Dev: the picture (`source.png`) redrawn from `denoise` of the way. */
-export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number; height: number; steps: number; denoise: number; seed: number }): Workflow {
+/** The files a style picture needs: USO, ByteDance's style reference for FLUX.1 Dev, as ComfyUI's
+ * own template names them (Phansora's ComfyUI and Telios's fetch them to these names). */
+export const USO = {
+  lora: 'uso-flux1-dit-lora-v1.safetensors',
+  projector: 'uso-flux1-projector-v1.safetensors',
+  vision: 'sigclip_vision_patch14_384.safetensors',
+};
+
+/** Image-to-image with FLUX.1 Dev: the picture (`source.png`) redrawn from `denoise` of the way. With
+ * `style`, the picture `style.png` also gives the look (its color, brushwork and texture, not its
+ * subject) at `weight`, by USO. */
+export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number; height: number; steps: number; denoise: number; seed: number; style?: { weight: number } }): Workflow {
   const gguf = f.unet.endsWith('.gguf');
   const w: Workflow = {
     '1': gguf ? { class_type: 'UnetLoaderGGUF', inputs: { unet_name: f.unet } } : { class_type: 'UNETLoader', inputs: { unet_name: f.unet, weight_dtype: 'default' } },
@@ -31,11 +41,24 @@ export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: 'telios' } },
   };
-  if (f.easycache > 0) {
-    // skips steps that would barely change the picture (built into ComfyUI)
-    w['12'] = { class_type: 'EasyCache', inputs: { model: ['1', 0], reuse_threshold: f.easycache, start_percent: 0.15, end_percent: 0.95, verbose: false } };
-    w['8'].inputs.model = ['12', 0];
+  let model: [string, number] = ['1', 0];
+  if (o.style) {
+    // the vision model reads the picture; USO's LoRA and projector apply its style, not its subject
+    w['30'] = { class_type: 'LoadImage', inputs: { image: 'style.png' } };
+    w['31'] = { class_type: 'CLIPVisionLoader', inputs: { clip_name: USO.vision } };
+    w['32'] = { class_type: 'CLIPVisionEncode', inputs: { clip_vision: ['31', 0], image: ['30', 0], crop: 'center' } };
+    w['33'] = { class_type: 'LoraLoaderModelOnly', inputs: { model, lora_name: USO.lora, strength_model: o.style.weight } };
+    w['34'] = { class_type: 'ModelPatchLoader', inputs: { name: USO.projector } };
+    w['35'] = { class_type: 'USOStyleReference', inputs: { model: ['33', 0], model_patch: ['34', 0], clip_vision_output: ['32', 0] } };
+    model = ['35', 0];
   }
+  if (f.easycache > 0) {
+    // skips steps that would barely change the picture (built into ComfyUI), last on the model so
+    // it caches the steps of whatever the model has become
+    w['12'] = { class_type: 'EasyCache', inputs: { model, reuse_threshold: f.easycache, start_percent: 0.15, end_percent: 0.95, verbose: false } };
+    model = ['12', 0];
+  }
+  w['8'].inputs.model = model;
   return w;
 }
 
