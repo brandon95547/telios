@@ -54,9 +54,9 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
           <button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)}>← Previous</button>
           <span className="downloads-inline">
             Download
-            {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
+            {byModel && r.drawing && <a href={restyle.downloadOne(r.id, 'package')} download title="The SVG, its fitting data and checks, and the sheet that shows it fitted: what an app takes in">App package</a>}
+            {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download title="The drawing alone, without its fitting data">SVG alone</a>}
             {byModel && r.files.layout && <a href={restyle.downloadOne(r.id, 'layout')} download>Fitting data</a>}
-            {byModel && r.drawing && <a href={restyle.downloadOne(r.id, 'package')} download title="The SVG, its fitting data and checks, and the sheet that shows it fitted">App package</a>}
             {byModel && 'Preview:'}
             {(['png', 'webp', 'jpeg'] as const).map((f) => <a key={f} href={restyle.downloadOne(r.id, f)} download>{f.toUpperCase()}</a>)}
             {!byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}

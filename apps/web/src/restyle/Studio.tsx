@@ -3,6 +3,7 @@ import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, findStyle, findTheme, type
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
+import { DownloadMenu } from './DownloadMenu.tsx';
 import { BatchProgress, TileProgress } from './Progress.tsx';
 import { Viewer } from './Viewer.tsx';
 
@@ -239,7 +240,9 @@ export function Studio({ health }: { health: Health | null }) {
                     {r.files && (
                       <div className="tile-actions">
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>
-                        <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options.type) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>
+                        {drawnByModel(r.options.type) && r.drawing
+                          ? <DownloadMenu id={r.id} name={r.inputName} />
+                          : <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options.type) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>}
                       </div>
                     )}
                   </div>

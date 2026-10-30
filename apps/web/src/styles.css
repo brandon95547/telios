@@ -250,8 +250,8 @@ button.big { width: 100%; padding: 11px; font-size: 15px; }
 .block-head h2 { font: 600 17px/1.3 var(--sans); margin: 0; }
 .count { color: var(--soft); font-weight: 400; font-size: 14px; }
 .select-all { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--soft); cursor: pointer; }
-a.button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 3px 10px; font-size: 13px; text-decoration: none; color: inherit; }
-a.button:hover { border-color: var(--faint); }
+a.button, summary.button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 3px 10px; font-size: 13px; text-decoration: none; color: inherit; }
+a.button:hover, summary.button:hover { border-color: var(--faint); }
 .tiles { display: grid; gap: 12px; margin-top: 12px; }
 .tiles.inputs { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .tiles.results { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
@@ -269,8 +269,16 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .tile-img.checker, .viewer-pair .checker { background-color: #fff; background-image: linear-gradient(45deg, #e5e7e6 25%, transparent 25%), linear-gradient(-45deg, #e5e7e6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7e6 75%), linear-gradient(-45deg, transparent 75%, #e5e7e6 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
 .tile-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-meta { font-size: 12px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tile-actions { display: flex; gap: 6px; margin-top: 2px; }
+.tile-actions { display: flex; gap: 6px; margin-top: 2px; position: relative; }
 .tile-actions button { flex: 1; }
+.download-menu > summary { list-style: none; cursor: pointer; }
+.download-menu > summary::-webkit-details-marker { display: none; }
+.download-menu > summary:focus-visible { outline: 2px solid var(--deep-2); outline-offset: 2px; }
+.download-menu-list { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 4; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14); overflow: hidden; }
+.download-menu-list a { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; text-decoration: none; color: inherit; }
+.download-menu-list a + a { border-top: 1px solid var(--line); }
+.download-menu-list a:hover, .download-menu-list a:focus-visible { background: #f4f5f4; }
+.download-menu-list span { font-size: 12.5px; color: var(--soft); }
 .tile-wait { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--busy); font-size: 13px; text-align: center; }
 .bar { display: block; width: 140px; flex: none; height: 6px; background: #e7e0cc; border-radius: 3px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--busy); transform-origin: left; transition: transform 0.5s linear; }
