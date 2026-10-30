@@ -12,9 +12,10 @@ import multer from 'multer';
 import { KINDS } from '@telios/shared';
 import type { Design, Reading, Run, RunEvent } from '@telios/shared';
 import { DATA, DRAW_EFFORT, HOST, MAX_RENDERS, PORT, PYTHON, WEB_DIST } from './config.ts';
-import { dataFile, designDir, getDesign, getRun, listDesigns, newId, readEvents, readJson, runIdFor, saveDesign, saveRun, updateDesign, writeJson, appendEvent } from './store.ts';
+import { dataFile, designDir, getDesign, getRun, listDesigns, newId, readEvents, readJson, saveDesign, updateDesign, writeJson } from './store.ts';
 import { python } from './python.ts';
 import { modelHealth, provider } from './engine/llm.ts';
+import { newRun } from './engine/newrun.ts';
 import { exportRun, parseColors, type Format } from './export.ts';
 import type { FromWorker, ToWorker } from './worker/main.ts';
 import { comfy } from './comfy/client.ts';
@@ -71,7 +72,8 @@ function designSummary(d: Design) {
   return { ...d, lastRun: last ? { id: last.id, mode: last.mode, status: last.status, stage: last.stage, preview: last.result?.files.preview } : null };
 }
 
-app.get('/api/designs', (req, res) => { res.json(listDesigns().map(designSummary)); });
+// Restyle's flat SVGs are drawn as designs too, but belong to their results: not in this library.
+app.get('/api/designs', (req, res) => { res.json(listDesigns().filter((d) => !d.fromResult).map(designSummary)); });
 
 app.post('/api/designs', upload.array('files', 30), wrap(async (req, res) => {
   const files = (req.files as Express.Multer.File[]) ?? [];
@@ -176,25 +178,9 @@ app.post('/api/designs/:id/runs', (req, res) => {
   if (!d) return;
   if (d.status !== 'ready' || !d.reading) return res.status(409).json({ error: 'The design is still being read.' });
   const mode = (['rebuild', 'reillustrate', 'trace'] as const).find((m) => m === req.body?.mode) ?? 'rebuild';
-  const model = mode === 'reillustrate' ? provider().provider : null;
-  if (mode === 'reillustrate' && !model) return res.status(409).json({ error: provider().error });
-  const maxRenders = Math.max(2, Math.min(20, Number(req.body?.maxRenders) || MAX_RENDERS));
+  if (mode === 'reillustrate' && !provider().provider) return res.status(409).json({ error: provider().error });
   const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 2000) : undefined;
-  const run: Run = {
-    id: runIdFor(d.id, d.runs.length + 1),
-    designId: d.id,
-    mode,
-    status: 'queued',
-    stage: 'queued',
-    createdAt: new Date().toISOString(),
-    options: { maxRenders, model: model ? `${model.label} ${model.model}` : '', effort: DRAW_EFFORT, ...(note && { note }) },
-    reading: d.reading,
-    iterations: [],
-    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 },
-  };
-  saveRun(run);
-  appendEvent(run, { type: 'status', status: 'queued', stage: 'queued', message: 'Waiting for a free worker' });
-  updateDesign(d.id, (x) => { x.runs.push(run.id); });
+  const run = newRun(d, mode, { maxRenders: req.body?.maxRenders, note });
   toWorker({ type: 'run', runId: run.id });
   res.status(201).json(run);
 });

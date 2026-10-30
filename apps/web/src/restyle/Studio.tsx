@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cleanOptions, DEFAULT_OPTIONS, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
+import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
@@ -138,7 +138,11 @@ export function Studio({ health }: { health: Health | null }) {
     if (ids.length && confirm(`Remove ${ids.length} picture${ids.length === 1 ? '' : 's'} from the inputs? Results made from them stay.`)) act(() => restyle.deleteInputs(ids));
   };
 
-  const comfyDown = health && !health.comfy.ready;
+  // what the chosen type draws with must be ready: ComfyUI, or for a flat SVG the model
+  const byModel = drawnByModel(options.type);
+  const notReady = !health ? '' : byModel
+    ? (health.model.ok ? '' : `The model is not ready: ${health.model.error ?? 'set one up in .env'}`)
+    : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);
   const viewable = done;
 
   return (
@@ -150,14 +154,14 @@ export function Studio({ health }: { health: Health | null }) {
         <AddImages onFiles={upload} onDesigns={(ids) => act(() => restyle.fromDesigns(ids))} busy={uploading !== null} />
         <OptionsPanel options={options} set={set} health={health} batchAll={batchAll} setBatchAll={setBatchAll} subfolders={subfolders} setSubfolders={setSubfolders} />
         <div className="start">
-          <button type="button" className="primary big" disabled={!count || working || !!comfyDown} onClick={start}>
+          <button type="button" className="primary big" disabled={!count || working || !!notReady} onClick={start}>
             ▶ Start processing ({count})
           </button>
           <div className="sub">
-            {comfyDown ? `ComfyUI is not ready: ${health!.comfy.detail}`
+            {notReady ? notReady
               : !ready.length ? 'Add pictures first.'
               : !count ? 'Tick the pictures to redraw, or turn on Process every picture.'
-              : `${toDraw.length} picture${toDraw.length === 1 ? '' : 's'} × ${options.variations} version${options.variations === 1 ? '' : 's'}, one at a time.`}
+              : `${toDraw.length} picture${toDraw.length === 1 ? '' : 's'} × ${options.variations} version${options.variations === 1 ? '' : 's'}, ${byModel ? 'two at a time' : 'one at a time'}.`}
           </div>
         </div>
       </aside>
@@ -173,7 +177,7 @@ export function Studio({ health }: { health: Health | null }) {
             <input type="file" multiple accept={ACCEPT} hidden onChange={(e) => { upload([...(e.target.files ?? [])], null); e.target.value = ''; }} />
             <div className="drop-title">Drop pictures, a folder or a zip to get started</div>
             <div className="drop-hint">Clip art, frames, borders, ornaments, icons, anything · PNG, JPEG, WebP, TIFF, SVG, EPS or PDF pages</div>
-            <div className="drop-hint">Then choose how ComfyUI redraws them: clip art, line art, a 2D or a 3D illustration, in Talari's styles and themes.</div>
+            <div className="drop-hint">Then choose how they are redrawn: ComfyUI draws clip art, line art, and 2D and 3D illustrations in Talari's styles and themes; a model draws a flat SVG.</div>
           </label>
         ) : (
           <section className="block">
@@ -215,7 +219,7 @@ export function Studio({ health }: { health: Health | null }) {
             <div className="tiles results">
               {results.map((r) => {
                 const at = viewable.indexOf(r);
-                const ground = r.options.background === 'black' ? 'black' : r.options.background === 'white' ? 'white' : 'checker';
+                const ground = r.options.background === 'transparent' ? 'checker' : r.options.background;
                 return (
                   <div key={r.id} className={`tile ${kept.has(r.id) ? 'on' : ''} ${r.status}`}>
                     <input type="checkbox" checked={kept.has(r.id)} onChange={() => setKept((s) => toggled(s, r.id))} aria-label={`Tick ${r.inputName}`} />
@@ -230,7 +234,7 @@ export function Studio({ health }: { health: Health | null }) {
                     {r.files && (
                       <div className="tile-actions">
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>
-                        <a className="button small" href={restyle.downloadOne(r.id)} download aria-label={`Download ${r.inputName}`}>⤓</a>
+                        <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options.type) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>
                       </div>
                     )}
                   </div>

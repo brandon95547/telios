@@ -1,15 +1,16 @@
 // Restyle's inputs and results on disk:
 //   data/restyle/inputs/<id>/   input.json, original.<ext> (as uploaded), source.png (≤ 2048 px, on
 //                               white: what is redrawn), thumb.webp
-//   data/restyle/results/<id>/  result.json, result.png, result.svg (clip art, line art),
-//                               thumb.webp and view.webp (screen copies), original.webp (to compare),
-//                               source.png (until it is drawn)
-// Deleting either takes its whole folder: nothing of it is left anywhere.
+//   data/restyle/results/<id>/  result.json, result.png, result.svg (clip art, line art, flat SVG),
+//                               layout.json (flat SVG: what fits it to a page), thumb.webp and view.webp
+//                               (screen copies), original.webp (to compare), source.png (until it is drawn)
+// Deleting either takes its whole folder: nothing of it is left anywhere. A flat SVG's result also
+// has a design of its own (data/designs/<id>, `fromResult`: the model's runs), which goes with it.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA } from '../config.ts';
-import { newId, readJson, writeJson } from '../store.ts';
+import { designDir, newId, readJson, writeJson } from '../store.ts';
 export { rel } from '../store.ts';
 import type { RestyleInput, RestyleResult } from '@telios/shared';
 
@@ -80,6 +81,8 @@ export function removeInput(id: string) {
   memo.delete(path.join(inputDir(id), 'input.json'));
 }
 export function removeResult(id: string) {
+  const designId = getResult(id)?.designId;
+  if (designId && SAFE.test(designId)) fs.rmSync(designDir(designId), { recursive: true, force: true, maxRetries: 3 });
   fs.rmSync(resultDir(id), { recursive: true, force: true, maxRetries: 3 });
   memo.delete(path.join(resultDir(id), 'result.json'));
 }

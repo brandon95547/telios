@@ -2,13 +2,16 @@
 // (Talari's words for it), the medium, the theme and the background, in plain sentences, which
 // FLUX reads better than tag lists.
 
-import { PICTURE_LED_TYPES, findMedium, findStyle, findTheme, type RestyleOptions } from '@telios/shared';
+import { findMedium, findStyle, findTheme, type ComfyType, type RestyleOptions } from '@telios/shared';
 
-const TYPE_WORDS: Record<RestyleOptions['type'], (subject: string) => string> = {
+// Illustration and 3D are led by the picture, which carries what it shows: they say nothing about
+// it, and ask for a variation with the picture as inspiration, so FLUX remixes it and does not copy.
+const VARIATION = (dimension: '2D' | '3D') => `Using the referenced image as inspiration, create a ${dimension} variation of it.`;
+const TYPE_WORDS: Record<ComfyType, (subject: string) => string> = {
   clipart: (s) => `Colorful vector clip art of ${s}, in a flat design style: bold clean outlines, large areas of solid flat color in a bright full-color palette, simple shapes, little detail, no gradients, no shading and no texture.`,
   lineart: (s) => `Black and white line art of ${s}. Clean black ink outlines only, even line weight, no shading, no fill and no color, like a page of a coloring book.`,
-  illustration: (s) => `A 2D illustration of ${s}.`,
-  render3d: (s) => `A 3D rendered illustration of ${s}. Sculpted three-dimensional forms, physically based materials, soft global illumination, gentle studio lighting and soft shading, a high quality 3D render.`,
+  illustration: () => VARIATION('2D'),
+  render3d: () => VARIATION('3D'),
 };
 
 // Drawn on white: redrawn from a picture on white, FLUX keeps its white ground whatever the prompt
@@ -25,9 +28,9 @@ const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
 export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor) {
-  // a phrase the model wrote starts with a capital; inside the sentence it should not. Where the
-  // picture carries what it shows, nothing is said about it.
-  const what = PICTURE_LED_TYPES.includes(o.type) ? 'the referenced image' : subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
+  if (o.type === 'vector') throw new Error('A flat SVG is drawn by the model, not by ComfyUI: it has no prompt.');
+  // a phrase the model wrote starts with a capital; inside the sentence it should not
+  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
   const parts = [TYPE_WORDS[o.type](what)];
   const style = findStyle(o.style);
   if (style) parts.push(`In this style: ${style.words}.`);

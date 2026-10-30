@@ -9,7 +9,8 @@ import path from 'node:path';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
-import { cleanOptions, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, cleanOptions, drawnByModel, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
+import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
 import type { ToWorker } from '../worker/main.ts';
@@ -31,7 +32,7 @@ const cleanFolder = (s: string) => s.split('/').filter((p) => p.trim() && p !== 
 export async function inFormat(png: string, format: OutputFormat, background: RestyleResult['options']['background']) {
   if (format === 'png') return fs.readFileSync(png);
   if (format === 'webp') return sharp(png).webp({ quality: 90, alphaQuality: 100 }).toBuffer();
-  return sharp(png).flatten({ background: background === 'black' ? '#000000' : '#ffffff' }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
+  return sharp(png).flatten({ background: background === 'transparent' ? BACKGROUND_HEX.white : BACKGROUND_HEX[background] }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 const EXT: Record<OutputFormat, string> = { png: 'png', webp: 'webp', jpeg: 'jpg' };
 
@@ -148,6 +149,8 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     const options = cleanOptions(req.body?.options);
     const inputs = ids(req.body?.inputIds).map(getInput).filter((i): i is RestyleInput => i?.status === 'ready');
     if (!inputs.length) return res.status(400).json({ error: 'Choose pictures that are ready to redraw.' });
+    // a flat SVG is written by the model, so it needs one set up; ComfyUI's pictures check theirs as they are drawn
+    if (drawnByModel(options.type) && !provider().provider) return res.status(409).json({ error: provider().error });
     const batchId = newResultId();
     const created: RestyleResult[] = [];
     for (const input of inputs) {
@@ -190,12 +193,17 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     res.json({ deleted: list.length });
   });
 
-  // One result, in its format (or ?format=png|webp|jpeg|svg).
+  // One result, in its format (or ?format=png|webp|jpeg|svg|layout: a flat SVG's fitting data, as JSON).
   router.get('/results/:id/download', wrap(async (req, res) => {
     const r = getResult(String(req.params.id));
     if (!r?.files) return res.status(404).json({ error: 'No such picture.' });
     const want = String(req.query.format ?? r.options.format);
     const name = resultName(r);
+    if (want === 'layout') {
+      if (!r.files.layout) return res.status(404).json({ error: 'This one has no fitting data.' });
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.layout.json"`);
+      return res.type('application/json').send(fs.readFileSync(path.join(resultDir(r.id), 'layout.json')));
+    }
     if (want === 'svg') {
       if (!r.files.svg) return res.status(404).json({ error: 'This one has no SVG.' });
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.svg"`);
@@ -232,6 +240,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
         fs.writeFileSync(src, await inFormat(path.join(resultDir(r.id), 'result.png'), r.options.format, r.options.background));
         manifest.push({ src, name: unique(`${base}.${EXT[r.options.format]}`) });
         if (r.files!.svg) manifest.push({ src: path.join(resultDir(r.id), 'result.svg'), name: unique(`${base}.svg`) });
+        if (r.files!.layout) manifest.push({ src: path.join(resultDir(r.id), 'layout.json'), name: unique(`${base}.layout.json`) });
       }
       fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(manifest));
       await python(['pack', path.join(work, 'manifest.json'), path.join(ZIPS, `${token}.zip`)], 15 * 60_000);

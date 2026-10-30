@@ -26,7 +26,7 @@ test('each output type asks for its own look, with the style, theme and backgrou
   assert.match(p, /art deco style, bold geometric symmetry/);
   assert.match(p, /Celtic and Insular themed/);
   assert.match(p, /plain pure white background, with no floor, no wall and no cast shadow\.$/);
-  assert.match(restylePrompt({ ...o, type: 'render3d', background: 'black' }, 'x'), /3D rendered illustration of the referenced image\..*pure white background, with no floor/);
+  assert.match(restylePrompt({ ...o, type: 'render3d', background: 'black' }, 'x'), /^Using the referenced image as inspiration, create a 3D variation of it\. In this style: .*pure white background, with no floor/);
   assert.match(restylePrompt({ ...o, background: 'white' }, 'x'), /plain pure white background\.$/);   // a white ground is kept, so it needs no stripping
   assert.match(restylePrompt({ ...DEFAULT_OPTIONS, type: 'lineart' }, ''), /line art of the design in the picture/);
   assert.match(restylePrompt(DEFAULT_OPTIONS, 'Rectangular page border'), /clip art of rectangular page border/);
@@ -298,10 +298,10 @@ test('a picture added before hashes were kept is still recognized, and gets its 
 
 const { CLOSENESS } = await import('@telios/shared');
 
-test('Following the original: illustration and 3D stay close to the picture and do not describe it, and Draw it whole is gone', () => {
+test('Following the original: illustration and 3D are redrawn from 0.40, 0.50 or 0.60 of the way and do not describe the picture, and Draw it whole is gone', () => {
   const denoise = (value: string, type: 'clipart' | 'lineart' | 'illustration' | 'render3d') => CLOSENESS.find((c) => c.value === value)!.denoise[type];
   for (const type of ['illustration', 'render3d'] as const) {
-    assert.deepEqual([denoise('close', type), denoise('balanced', type), denoise('loose', type)], [0.2, 0.3, 0.35], type);
+    assert.deepEqual([denoise('close', type), denoise('balanced', type), denoise('loose', type)], [0.4, 0.5, 0.6], type);
   }
   // clip art and line art must change how everything is drawn, so they keep their room
   for (const type of ['clipart', 'lineart'] as const) assert.ok(denoise('close', type) >= 0.65, type);
@@ -310,10 +310,11 @@ test('Following the original: illustration and 3D stay close to the picture and 
   // a result made with the removed choice reads as the default
   assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'balanced');
   assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
-  // the picture carries what it shows there; clip art and line art, redrawn from most of the way, are told
-  for (const type of ['illustration', 'render3d'] as const) {
-    const p = restylePrompt({ ...DEFAULT_OPTIONS, type, closeness: 'balanced' }, 'a seated pharaoh with a staff');
-    assert.match(p, /of the referenced image\./, type);
+  // the picture carries what it shows there: it is the inspiration, and a variation of it is asked for (2D or 3D to match
+  // the type); clip art and line art, redrawn from most of the way, are told
+  for (const [type, dimension] of [['illustration', '2D'], ['render3d', '3D']] as const) {
+    const p = restylePrompt({ ...DEFAULT_OPTIONS, type, closeness: 'balanced', style: '', theme: '', notes: '', background: 'white' }, 'a seated pharaoh with a staff');
+    assert.equal(p, `Using the referenced image as inspiration, create a ${dimension} variation of it. Isolated on a plain pure white background.`, type);
     assert.doesNotMatch(p, /pharaoh|staff/, type);
   }
   for (const type of ['clipart', 'lineart'] as const) assert.match(restylePrompt({ ...DEFAULT_OPTIONS, type }, 'a seated pharaoh with a staff'), /a seated pharaoh with a staff/, type);

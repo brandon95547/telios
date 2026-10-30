@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { CLOSENESS, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
@@ -39,12 +39,39 @@ export async function withMask(png: Buffer, mask: Buffer) {
   return sharp(opaque).joinChannel(alpha, { raw: { width: width!, height: height!, channels: 1 } }).png().toBuffer();
 }
 
+/** The least and the most of a picture a subject's mask may cover for it to count as a subject found. */
+const SUBJECT_SHARE: [number, number] = [0.02, 0.98];
+
+/** A picture's subject, by the model's mask of it, on flat white. FLUX keeps the ground it is given
+ * (a prompt asking for a white background does nothing to a photographed hallway, at any strength),
+ * so a redraw that starts on white has a white ground and no background of its own to keep. A mask
+ * that finds no subject, or all of the picture, leaves the picture as it is. */
+export async function subjectOnWhite(png: Buffer, mask: Buffer): Promise<{ png: Buffer; cut: boolean }> {
+  const { width, height } = await sharp(png).metadata();
+  const m = await sharp(mask).greyscale().resize(width, height).raw().toBuffer();
+  let kept = 0;
+  for (const v of m) if (v > 127) kept++;
+  const share = kept / m.length;
+  if (share < SUBJECT_SHARE[0] || share > SUBJECT_SHARE[1]) return { png, cut: false };
+  return { png: await sharp(await withMask(png, mask)).flatten({ background: BACKGROUND_HEX.white }).png().toBuffer(), cut: true };
+}
+
+/** A result's screen copies: a thumbnail for the grid and a large view for the viewer. */
+export async function screenCopies(png: Buffer, dir: string) {
+  await sharp(png).resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toFile(path.join(dir, 'thumb.webp'));
+  await sharp(png).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(dir, 'view.webp'));
+}
+
 export async function drawResult(id: string, signal: AbortSignal) {
   const stage = (s: string) => updateResult(id, (r) => { r.stage = s; });
   const r = updateResult(id, (x) => { x.status = 'running'; x.stage = 'Starting'; x.startedAt = new Date().toISOString(); delete x.error; });
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
+  if (o.type === 'vector') {   // drawn by the model (vector.ts), and never sent here
+    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; x.error = 'A flat SVG is drawn by the model, not by ComfyUI.'; });
+    return;
+  }
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));
   try {
     const info = await comfy().info();
@@ -63,10 +90,15 @@ export async function drawResult(id: string, signal: AbortSignal) {
         if (input) updateInput(input.id, (i) => { i.subject = read; });
       }
     }
-    // a picture of something (a character, an object) is cut out of its ground by a model; without one
-    // it is drawn on a flat key color, green (blue if the picture has greens), and cut out by color
-    const clearing = o.background !== 'white';
-    const byColor = clearing && (o.type === 'illustration' || o.type === 'render3d') && !info.backgroundRemoval;
+    // a picture of something (a character, an object) is cut out of its ground by a model, before it is
+    // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
+    // black or green); without a model it is drawn on a flat key color, green (blue if the picture has
+    // greens), and cut out by color
+    const pictureLed = PICTURE_LED_TYPES.includes(o.type);
+    const removal = info.backgroundRemoval;
+    const byModel = pictureLed && !!removal;
+    const clearing = o.background !== 'white' || byModel;
+    const byColor = clearing && pictureLed && !removal;
     const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
     const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined);
     const quality = qualityOf(o);
@@ -84,7 +116,17 @@ export async function drawResult(id: string, signal: AbortSignal) {
       ground = path.join(scratch, 'ground.png');
       await python(['ground', path.join(scratch, 'white.png'), ground, '--color', KEY_HEX[key]]);
     }
-    const start = await sharp(ground).resize(w, h, { fit: 'cover' }).png().toBuffer();
+    let startPicture: string | Buffer = ground;
+    let startCutout = false;
+    if (byModel) {
+      stage('Cutting the subject out');
+      const whitened = fs.readFileSync(ground);
+      const mask = await comfy().run(cutoutWorkflow(removal!), { 'picture.png': whitened }, signal);
+      const on = await subjectOnWhite(whitened, mask);
+      startPicture = on.png;
+      startCutout = on.cut;
+    }
+    const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
@@ -105,6 +147,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       model: info.flux.unet, width: w, height: h, steps: quality.steps, denoise, guidance: info.flux.guidance,
       sampler: info.flux.sampler, scheduler: info.flux.scheduler, easycache: info.flux.easycache,
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
+      ...(startCutout && { startCutout }),
     };
     updateResult(id, (x) => { x.settings = settings; });
     let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
@@ -112,10 +155,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
     if (clearing) {
       stage('Clearing the background');
       let cleared = true;
-      if (info.backgroundRemoval && (o.type === 'illustration' || o.type === 'render3d')) {
-        const mask = await comfy().run(cutoutWorkflow(info.backgroundRemoval), { 'picture.png': png }, signal);
+      if (byModel) {
+        const mask = await comfy().run(cutoutWorkflow(removal!), { 'picture.png': png }, signal);
         png = await withMask(png, mask);
-        settings.cutout = { by: 'model', with: info.backgroundRemoval };
+        settings.cutout = { by: 'model', with: removal! };
       } else if (key) {
         fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
         const cut = await python(['chroma', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), '--color', key]);
@@ -131,7 +174,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
         settings.cutout = { by: 'color', with: o.type === 'lineart' ? 'white, keeping the ink' : 'white' };
       }
-      if (cleared && o.background === 'black') png = await sharp(png).flatten({ background: '#000000' }).png().toBuffer();
+      if (cleared && o.background !== 'transparent') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
     }
 
     const [tw, th] = targetSize(o.size, [w, h], input?.originalSize);
@@ -161,8 +204,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
 
     stage('Finishing');
-    await sharp(png).resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toFile(path.join(dir, 'thumb.webp'));
-    await sharp(png).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(dir, 'view.webp'));
+    await screenCopies(png, dir);
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
     updateResult(id, (x) => {
       x.status = 'done';

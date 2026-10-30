@@ -7,7 +7,10 @@ ComfyUI in the look you choose: clip art, line art, a 2D illustration or a 3D il
 of Talari's art styles (and a medium, for 2D illustrations) and one of its themes. Add one picture,
 several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
 results come back in a grid to tick, download as a zip (in folders by type, style and theme), or
-delete. Clip art and line art come as SVG too.
+delete. Clip art and line art come as SVG too. A fifth choice, **Flat SVG** (under Vector, beside
+2D and 3D), is drawn by a model instead of ComfyUI: new flat vector art of a frame, border, corner
+or ornament, one layer per color, with the data that fits a frame or border to any page. It is
+Vector redraw's drawing loop (below) run from the same grid, so it needs a model and no ComfyUI.
 
 **Vector redraw** takes a picture of an existing design (a frame, a border, a corner, an ornament, a pattern
 tile, an initial) and redraws it as clean vector art, with one layer per color, colored by a clear
@@ -50,12 +53,17 @@ ComfyUI is only lent the work. Where it runs is one setting in `.env`:
   models once (about 12 GB; `npm run comfyui` does only that), then starts it on 127.0.0.1:8189.
   It wants an NVIDIA GPU; a Mac draws with Metal, slowly.
 
-The header says whether ComfyUI is ready. With a background removal model (BiRefNet), 2D and 3D
-illustrations are cut out of their background; without one, they are drawn on a flat green backdrop
-(blue if the picture has greens of its own) and cut out by color, and a plain background is made clear
-by color for clip art and line art. With an upscaling model (4x-UltraSharp), Enhance details
-enlarges with detail. On an NVIDIA A4000 a picture takes about 30 seconds, and the first after a
-pause about a minute more (the models are loaded again).
+The header says whether ComfyUI is ready. The Background is transparent, white, black or green.
+With a background removal model (BiRefNet), a 2D or 3D illustration is redrawn from its subject cut
+out of the picture and put on flat white (FLUX keeps the ground it is given, so asking for a white
+background in the prompt does nothing to a photographed one), then cut out again and placed on the
+ground chosen; the cutout is made twice, so a picture takes a few seconds more. Follow the original
+is 0.40, 0.50 or 0.60 of the way for these: 0.50 is a variation that keeps the pose, face and main
+shapes and redraws the detail; from 0.70 up a picture starts to lose its subject. Without the model,
+they are drawn on a flat green backdrop (blue if the picture has greens of its own) and cut out by
+color, and a plain background is made clear by color for clip art and line art. With an upscaling
+model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 a picture takes about
+30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,
@@ -100,6 +108,13 @@ The header shows whether the model answers. Each re-illustration shows what it c
 provider's higher (peak) rate where Telios knows it: with DeepSeek Flash, about 5 to 15 cents for
 six renders. Its drawing is good on geometric and simple floral designs and weak on complex
 ornament, where Rebuild often does better.
+
+In Restyle, a **Flat SVG** takes each picture through that same loop: the model reads it, takes its
+own reading as confirmed (there is no step to correct it in a batch), then draws, renders and
+revises, up to `TELIOS_MAX_RENDERS` times. Two run at a time (`TELIOS_DRAW_CONCURRENCY`), beside any
+Vector redraw runs. A result keeps the layered SVG, its fitting data (`.layout.json`, in the zip too)
+and a PNG preview; its viewer links to the full drawings and page fits in Vector redraw, and
+deleting the result deletes those too.
 
 Other settings (all optional, in the shell or `.env`): `TELIOS_EFFORT` (`low`, `medium` or
 `high`, default `high`), `TELIOS_MAX_RENDERS` (default 8), `TELIOS_DRAW_CONCURRENCY` (default 2),

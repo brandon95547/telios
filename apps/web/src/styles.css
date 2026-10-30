@@ -265,6 +265,7 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .tile-img img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
 .tile-img.white { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
 .tile-img.black, .viewer-pair .black { background: #111; }
+.tile-img.green, .viewer-pair .green { background: #00ff00; }
 .tile-img.checker, .viewer-pair .checker { background-color: #fff; background-image: linear-gradient(45deg, #e5e7e6 25%, transparent 25%), linear-gradient(-45deg, #e5e7e6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7e6 75%), linear-gradient(-45deg, transparent 75%, #e5e7e6 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
 .tile-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-meta { font-size: 12px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -299,6 +300,10 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .prompt-peek b { flex: none; font-weight: 600; }
 .prompt-peek-text { flex: 1; min-width: 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prompt-peek-more { flex: none; color: var(--deep-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.drawing-note { margin-top: 12px; font-size: 13.5px; }
+.drawing-note b { font-weight: 600; }
+.drawing-note p { margin: 4px 0 6px; color: var(--soft); line-height: 1.45; }
+.drawing-note a { font-weight: 600; }
 .prompt-dialog { border: 0; border-radius: 10px; padding: 0; width: min(780px, 92vw); max-height: 86vh; color: var(--ink); background: var(--panel); }
 .prompt-dialog::backdrop { background: rgba(10, 16, 14, 0.62); }
 .prompt-dialog-body { display: flex; flex-direction: column; max-height: 86vh; padding: 14px 18px 16px; }

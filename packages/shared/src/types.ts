@@ -88,6 +88,9 @@ export interface Design {
   size?: [number, number];
   reading?: Reading;
   runs: string[];
+  /** The Restyle result (a flat SVG) this design was made for: it is kept out of the library, and
+   * goes when the result does. */
+  fromResult?: string;
 }
 
 /** rebuild: cleaned and regularized from the upload, no model; reillustrate: drawn new by a

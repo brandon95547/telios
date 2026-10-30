@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, QUALITIES, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, QUALITIES, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -28,17 +28,19 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
   batchAll: boolean; setBatchAll: (v: boolean) => void; subfolders: boolean; setSubfolders: (v: boolean) => void;
 }) {
   const type = typeInfo(options.type);
+  const byModel = drawnByModel(options.type);
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (t !== 'illustration') set('medium', '');
+    if (drawnByModel(t)) set('theme', '');
   };
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
   return (
     <>
       <section className="panel-section">
         <h2><span className="step">2</span> Output style</h2>
-        {(['2D', '3D'] as const).map((group) => (
+        {(['2D', '3D', 'Vector'] as const).map((group) => (
           <div key={group} className="type-group">
             <div className="label">{group}</div>
             <div className="types">
@@ -51,7 +53,14 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             </div>
           </div>
         ))}
-        <label className="field">
+        {byModel && (
+          <div className="sub">
+            {health && !health.model.ok
+              ? <span className="warn">{health.model.provider === 'none' ? 'No model is set up' : `${health.model.label} is not answering`}: a flat SVG is drawn by a model, not ComfyUI. {health.model.error}</span>
+              : <>Drawn as new vector art by {health ? `${health.model.label} ${health.model.name}` : 'the model'}, not by ComfyUI: a few minutes and a few cents a picture, in a few renders it checks itself. It reads what each picture is (a frame, a border, a corner, an ornament) and how it is colored. The SVG has one layer per color{' '}and, for a frame or border, the data that fits it to any page.</>}
+          </div>
+        )}
+        {!byModel && <label className="field">
           <div className="label">Illustration style</div>
           <select value={options.style} onChange={(e) => set('style', e.target.value)}>
             <option value="">None selected</option>
@@ -68,7 +77,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>
               : <div className="sub warn">{health.comfy.styleReference ? 'This style has no reference picture on this server yet' : 'ComfyUI here has no style-reference files (USO) yet'}, so it is drawn from words alone.</div>
           )}
-        </label>
+        </label>}
         {options.type === 'illustration' && (
           <label className="field">
             <div className="label">Medium</div>
@@ -78,7 +87,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             </select>
           </label>
         )}
-        <label className="field">
+        {!byModel && <label className="field">
           <div className="label">Theme</div>
           <select value={options.theme} onChange={(e) => set('theme', e.target.value)}>
             <option value="">None selected</option>
@@ -88,19 +97,20 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               </optgroup>
             ))}
           </select>
-        </label>
-        <div className="field">
+        </label>}
+        {!byModel && <div className="field">
           <div className="label">Follow the original</div>
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
-        </div>
+        </div>}
         <div className="field">
           <div className="label">Versions of each picture</div>
           <Seg label="Versions of each picture" value={options.variations} onChange={(v) => set('variations', v)} options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))} />
+          {byModel && <div className="sub">Each version is a separate drawing, and costs what one does.</div>}
         </div>
         <label className="field">
-          <div className="label">Extra words for the prompt</div>
-          <input className="text" value={options.notes} maxLength={300} placeholder="Optional: gold and deep red, thin lines…" onChange={(e) => set('notes', e.target.value)} />
+          <div className="label">{byModel ? 'Extra words for the model' : 'Extra words for the prompt'}</div>
+          <input className="text" value={options.notes} maxLength={300} placeholder={byModel ? 'Optional: one ink, keep the rosettes, a deeper foot…' : 'Optional: gold and deep red, thin lines…'} onChange={(e) => set('notes', e.target.value)} />
         </label>
       </section>
 
@@ -108,14 +118,14 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         <h2><span className="step">3</span> Processing options</h2>
         <div className="two">
           <label className="field">
-            <div className="label">Output format</div>
+            <div className="label">{byModel ? 'Preview format' : 'Output format'}</div>
             <select value={options.format} onChange={(e) => set('format', e.target.value as RestyleOptions['format'])}>
               <option value="png">PNG{options.background === 'transparent' ? ' (transparent)' : ''}</option>
               <option value="webp">WebP{options.background === 'transparent' ? ' (transparent)' : ''}</option>
               <option value="jpeg">JPEG</option>
             </select>
           </label>
-          <label className="field">
+          {!byModel && <label className="field">
             <div className="label">Size</div>
             <select value={options.size} onChange={(e) => set('size', e.target.value as RestyleOptions['size'])}>
               <option value="drawn">As drawn</option>
@@ -123,25 +133,25 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               <option value="2x">2× as drawn</option>
               <option value="4x">4× as drawn</option>
             </select>
-          </label>
+          </label>}
         </div>
-        {type.vector && <div className="sub">{type.label} also comes as an SVG.</div>}
-        <label className="field">
+        {type.vector && !byModel && <div className="sub">{type.label} also comes as an SVG.</div>}
+        {!byModel && <label className="field">
           <div className="label">Quality</div>
           <select value={options.quality} onChange={(e) => set('quality', e.target.value as RestyleOptions['quality'])}>
             <option value="auto">Auto ({quality.label.toLowerCase()} for {type.label.toLowerCase()})</option>
             {QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}: {q.size} px, {q.steps} steps</option>)}
           </select>
-        </label>
+        </label>}
         <div className="field">
           <div className="label">Background</div>
-          <Seg label="Background" value={options.background} onChange={(v) => set('background', v)} options={[{ value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }]} />
+          <Seg label="Background" value={options.background} onChange={(v) => set('background', v)} options={[{ value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }, { value: 'green', label: 'Green' }]} />
           {options.background !== 'white' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
             <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
         </div>
-        <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
-          hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />
+        {!byModel && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
+          hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />}
         <Toggle label="Process every picture" on={batchAll} onChange={setBatchAll} hint="Off: only the pictures you tick." />
       </section>
 

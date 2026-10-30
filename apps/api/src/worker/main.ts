@@ -11,9 +11,11 @@ import { readDesign } from '../engine/read.ts';
 import { originalCrop } from '../engine/render.ts';
 import { reillustrate, isCanceled } from '../engine/draw.ts';
 import { finishDrawing, finishRebuild, finishTrace } from '../engine/finish.ts';
+import { drawnByModel } from '@telios/shared';
 import type { Reading, Run, RunEvent } from '@telios/shared';
 import { prepareInput } from '../restyle/prepare.ts';
 import { drawResult } from '../restyle/job.ts';
+import { drawVector } from '../restyle/vector.ts';
 import { getResult, listInputs, listResults, updateResult } from '../restyle/store.ts';
 
 export type ToWorker = { type: 'ingest'; designId: string } | { type: 'run'; runId: string } | { type: 'cancel'; runId: string }
@@ -40,17 +42,22 @@ const ingestQueue = new Queue(3);
 const runQueue = new Queue(DRAW_CONCURRENCY);
 const traceQueue = new Queue(2);
 const controllers = new Map<string, AbortController>();
-// Restyle: uploads made ready a few at a time; results drawn one at a time (one GPU, shared).
+// Restyle: uploads made ready a few at a time; results drawn one at a time (one GPU, shared). A flat
+// SVG is drawn by the model, so it waits in the runs' queue with the Vector redraw's own.
 const prepareQueue = new Queue(3);
 const restyleQueue = new Queue(1);
 const drawing = new Map<string, AbortController>();
 
 function restyle(resultId: string) {
-  restyleQueue.push(async () => {
+  const byModel = drawnByModel(getResult(resultId)?.options.type ?? 'clipart');
+  (byModel ? runQueue : restyleQueue).push(async () => {
     if (getResult(resultId)?.status !== 'queued') return;   // stopped or deleted while it waited
     const controller = new AbortController();
     drawing.set(resultId, controller);
-    try { await drawResult(resultId, controller.signal); } finally { drawing.delete(resultId); }
+    try {
+      if (byModel) await drawVector(resultId, controller.signal, { read: ingest, draw: runJob });
+      else await drawResult(resultId, controller.signal);
+    } finally { drawing.delete(resultId); }
   });
 }
 
@@ -79,7 +86,9 @@ async function ingest(designId: string) {
 
 // ── Runs ──
 
-async function runJob(runId: string) {
+/** `hooks` is for a Restyle flat SVG, which runs this inside its own job: its signal stops the run, and
+ * it hears every event. */
+async function runJob(runId: string, hooks: { signal: AbortSignal; onEvent: (e: RunEvent) => void } | null = null) {
   const run = getRun(runId);
   if (!run || run.status !== 'queued') return;
   const design = getDesign(run.designId)!;
@@ -87,7 +96,10 @@ async function runJob(runId: string) {
   const rDir = runDir(run.designId, run.id);
   const controller = new AbortController();
   controllers.set(runId, controller);
+  if (hooks?.signal.aborted) controller.abort();
+  else hooks?.signal.addEventListener('abort', () => controller.abort(), { once: true });
   const emit = (event: RunEvent) => {
+    hooks?.onEvent(event);
     if (event.type === 'progress') return send({ type: 'event', runId, event });   // live only
     if (event.type === 'status') { run.status = event.status; run.stage = event.stage; }
     if (event.type === 'error') run.error = event.message;
@@ -159,6 +171,7 @@ process.on('message', (m: ToWorker) => {
 // On start: finish what a restart interrupted. Uploads are measured and read again; queued runs
 // go back in the queue; a run that was mid-way is marked interrupted (it can be run again).
 for (const d of listDesigns()) {
+  if (d.fromResult) continue;   // a flat SVG's design: its result starts it again, from the start
   if (d.status === 'ingesting' || d.status === 'reading') ingestQueue.push(() => ingest(d.id));
   for (const runId of d.runs) {
     const run = getRun(runId);

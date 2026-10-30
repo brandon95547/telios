@@ -358,10 +358,6 @@ export const CATALOG: Catalog = {
      "label": "Ancient Egyptian"
     },
     {
-     "id": "ancient-near-east",
-     "label": "Ancient Near East"
-    },
-    {
      "id": "celtic",
      "label": "Celtic & Insular"
     },
@@ -376,6 +372,10 @@ export const CATALOG: Catalog = {
     {
      "id": "mesoamerican",
      "label": "Mesoamerican"
+    },
+    {
+     "id": "ancient-near-east",
+     "label": "Mesopotamian Art"
     },
     {
      "id": "native-american",

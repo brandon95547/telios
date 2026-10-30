@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
+import { drawnByModel, findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
 import { api, restyle } from '../api.ts';
 import { PromptDialog } from './PromptDialog.tsx';
 
@@ -24,7 +24,8 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
   }, [index, results.length, r, onClose, setIndex, toggle, promptOpen]);
   if (!r?.files) return null;
   const o = r.options;
-  const ground = o.background === 'black' ? 'black' : o.background === 'white' ? 'white' : 'checker';
+  const byModel = drawnByModel(o.type);
+  const ground = o.background === 'transparent' ? 'checker' : o.background;
   return (
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`${r.inputName}, ${index + 1} of ${results.length}`} onClick={onClose}>
       <div className="viewer-box" onClick={(e) => e.stopPropagation()}>
@@ -53,8 +54,11 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
           <button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)}>← Previous</button>
           <span className="downloads-inline">
             Download
+            {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
+            {byModel && r.files.layout && <a href={restyle.downloadOne(r.id, 'layout')} download>Fitting data</a>}
+            {byModel && 'Preview:'}
             {(['png', 'webp', 'jpeg'] as const).map((f) => <a key={f} href={restyle.downloadOne(r.id, f)} download>{f.toUpperCase()}</a>)}
-            {r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
+            {!byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
           </span>
           <button type="button" disabled={index === results.length - 1} onClick={() => setIndex(index + 1)}>Next →</button>
         </div>
@@ -69,6 +73,13 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
               <span className="prompt-peek-text">{r.prompt}</span>
               <span className="prompt-peek-more">View full prompt</span>
             </button>
+          )}
+          {r.drawing && (
+            <div className="drawing-note">
+              <b>What the model says</b>
+              <p>{r.drawing.summary}</p>
+              {r.designId && <a href={`#/d/${r.designId}`}>Review its drawings, layers and page fits in Vector redraw</a>}
+            </div>
           )}
         </section>
         {promptOpen && r.prompt && <PromptDialog prompt={r.prompt} seed={r.seed} onClose={() => setPromptOpen(false)} />}
