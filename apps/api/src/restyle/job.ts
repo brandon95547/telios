@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { CLOSENESS, WHOLE_PAD, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { CLOSENESS, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
@@ -28,22 +28,6 @@ export function targetSize(size: RestyleResult['options']['size'], drawn: [numbe
   else if (size === 'original' && original?.[0] && original[1]) [w, h] = original;
   const k = Math.min(1, MAX_SIDE / Math.max(w, h));
   return [Math.round(w * k), Math.round(h * k)];
-}
-
-/** A transparent picture cut to what is drawn in it, with a margin of `margin` of its longer side. */
-export async function trimToContent(png: Buffer, margin = 0.04) {
-  const { data, info } = await sharp(png).extractChannel('alpha').raw().toBuffer({ resolveWithObject: true });
-  let [x0, y0, x1, y1] = [info.width, info.height, -1, -1];
-  for (let y = 0; y < info.height; y++) {
-    for (let x = 0; x < info.width; x++) {
-      if (data[y * info.width + x] > 12) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    }
-  }
-  if (x1 < 0) return png;   // nothing drawn: left as it is
-  const m = Math.round(Math.max(x1 - x0, y1 - y0) * margin);
-  const left = Math.max(0, x0 - m), top = Math.max(0, y0 - m);
-  const right = Math.min(info.width, x1 + 1 + m), bottom = Math.min(info.height, y1 + 1 + m);
-  return sharp(png).extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
 }
 
 /** A picture with a mask (white kept) as its transparency. Opaque first and the mask joined after, in two
@@ -68,12 +52,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const source = fs.readFileSync(path.join(dir, 'source.png'));
     const meta = await sharp(source).metadata();
 
-    // what it shows: read once per input, kept with it. Drawn whole it is not read: the prompt does not
-    // describe the subject, the redrawn picture carries it.
-    const whole = o.closeness === 'whole';
+    // what it shows: read once per input, kept with it
     const input = getInput(r.inputId);
     let subject = input?.subject;
-    if (!whole && !subject) {
+    if (!subject) {
       stage('Reading the picture');
       const read = await readSubject(source, signal);
       if (read) {
@@ -88,11 +70,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
     const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined);
     const quality = qualityOf(o);
-    // drawn whole, the picture is set in white space: a head the picture cuts off has room to be
-    // finished, and what is drawn is not held to the picture's own edge
-    const pad = whole ? Math.round(Math.max(meta.width!, meta.height!) * WHOLE_PAD) : 0;
     const warnings: string[] = [];
-    const [w, h] = drawSize((meta.width! + 2 * pad) / (meta.height! + 2 * pad), quality.size);
+    const [w, h] = drawSize(meta.width! / meta.height!, quality.size);
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
 
@@ -105,9 +84,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       ground = path.join(scratch, 'ground.png');
       await python(['ground', path.join(scratch, 'white.png'), ground, '--color', KEY_HEX[key]]);
     }
-    let framed = sharp(ground);
-    if (pad) framed = framed.extend({ top: pad, bottom: pad, left: pad, right: pad, background: key ? KEY_HEX[key] : '#ffffff' });
-    const start = await framed.resize(w, h, { fit: 'cover' }).png().toBuffer();
+    const start = await sharp(ground).resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
@@ -150,31 +127,19 @@ export async function drawResult(id: string, signal: AbortSignal) {
         fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
         // a frame's opening is cut out too (the window rule); a character or an object has none
         const isFrame = o.type === 'clipart' || o.type === 'lineart';
-        await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), ...(o.type === 'lineart' ? ['--everything'] : []), ...(isFrame && !whole ? [] : ['--no-window'])]);
+        await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), ...(o.type === 'lineart' ? ['--everything'] : []), ...(isFrame ? [] : ['--no-window'])]);
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
         settings.cutout = { by: 'color', with: o.type === 'lineart' ? 'white, keeping the ink' : 'white' };
       }
-      if (cleared) {
-        // drawn whole on a clear ground, it is cut to what is drawn, with a small margin
-        if (whole && o.background === 'transparent') png = await trimToContent(png);
-        if (o.background === 'black') png = await sharp(png).flatten({ background: '#000000' }).png().toBuffer();
-      }
+      if (cleared && o.background === 'black') png = await sharp(png).flatten({ background: '#000000' }).png().toBuffer();
     }
 
-    // what is kept is as large as it was drawn (or trimmed to): its size, not the drawn canvas's
-    const drawn = await sharp(png).metadata();
-    const [dw, dh] = [drawn.width!, drawn.height!];
-    let [tw, th] = targetSize(o.size, [dw, dh], input?.originalSize);
-    if (whole && o.size === 'original' && input?.originalSize?.[0]) {
-      // the original's size is a box to fit in, not a shape to stretch the new picture to
-      const k = Math.min(input.originalSize[0] / dw, input.originalSize[1] / dh);
-      [tw, th] = [Math.round(dw * k), Math.round(dh * k)];
-    }
-    if (tw > dw && o.enhance && info.upscalers.length) {
+    const [tw, th] = targetSize(o.size, [w, h], input?.originalSize);
+    if (tw > w && o.enhance && info.upscalers.length) {
       // the upscaling model redraws fine detail as it enlarges; it works on color, so the
       // transparency is enlarged here and put back
       stage('Enlarging');
-      const scale = Math.min(4, tw / dw);
+      const scale = Math.min(4, tw / w);
       const colors = await sharp(png).flatten({ background: o.background === 'black' ? '#000' : '#fff' }).png().toBuffer();
       const big = await comfy().run(upscaleWorkflow(info.upscalers[0], scale), { 'picture.png': colors }, signal);
       settings.enlargedWith = info.upscalers[0];
@@ -182,7 +147,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       png = o.background === 'transparent'
         ? await withMask(await sized.png().toBuffer(), await sharp(png).extractChannel('alpha').resize(tw, th, { fit: 'fill' }).png().toBuffer())
         : await sized.png().toBuffer();
-    } else if (tw !== dw || th !== dh) {
+    } else if (tw !== w || th !== h) {
       png = await sharp(png).resize(tw, th, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
     }
     fs.writeFileSync(path.join(dir, 'result.png'), png);

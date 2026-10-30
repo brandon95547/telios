@@ -40,23 +40,17 @@ export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: 
 ];
 
 /** How far the redrawing may move from the original: the sampler's denoise, for each type.
- * Clip art and 3D change how everything is drawn (a gray engraving becomes flat color), so they
- * need more room than line art, which keeps the drawing and only cleans it. Tried on prod's
- * FLUX.1 Dev (Q4_K_S, 16 steps) with scans of engraved frames. */
-export type Closeness = 'close' | 'balanced' | 'loose' | 'whole';
+ * Illustration and 3D stay close to the picture, which keeps its pose, the way it faces and its
+ * age (at 0.92 a seated old man came out a boy facing front). Clip art changes how everything is
+ * drawn (a gray engraving becomes flat color), so it needs more room than line art, which keeps
+ * the drawing and only cleans it. Clip art and line art tried on prod's FLUX.1 Dev (Q4_K_S, 16
+ * steps) with scans of engraved frames. */
+export type Closeness = 'close' | 'balanced' | 'loose';
 export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: Record<OutputType, number> }[] = [
-  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.6, render3d: 0.75 } },
-  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.75, render3d: 0.85 } },
-  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.88, render3d: 0.92 } },
-  // Draws a new subject from the picture, with room round it, so a head or figure the original cuts
-  // off at its edge comes out whole instead of cut off again. The prompt does not describe the
-  // subject: the picture carries it. Illustration and 3D are redrawn from 0.80 of the way, which keeps
-  // the picture's pose, the way it faces and its age (at 0.92 a seated old man came out a boy facing
-  // front); clip art and line art, which must change how everything is drawn, stay as free as before.
-  { value: 'whole', label: 'Draw it whole', hint: 'If the original is cut off (a head or a figure at the edge of the picture), draws a new, complete character or scene, not a copy of the crop.', denoise: { clipart: 0.94, lineart: 0.92, illustration: 0.8, render3d: 0.8 } },
+  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.2, render3d: 0.2 } },
+  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.3, render3d: 0.3 } },
+  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.35, render3d: 0.35 } },
 ];
-/** How much white is added round a picture drawn whole, as a share of its longer side, each side. */
-export const WHOLE_PAD = 0.35;
 
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.

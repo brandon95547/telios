@@ -294,41 +294,26 @@ test('a picture added before hashes were kept is still recognized, and gets its 
   assert.equal(getInput(id)?.hash?.length, 64);
 });
 
-// ── Draw it whole ──
+// ── How closely it follows the original ──
 
-const { CLOSENESS, WHOLE_PAD } = await import('@telios/shared');
+const { CLOSENESS } = await import('@telios/shared');
 
-test('Draw it whole: the main subject, complete, set in white space, with what it shows left to the picture', () => {
-  assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'whole');
-  assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
-  const whole = restylePrompt({ ...DEFAULT_OPTIONS, type: 'render3d', closeness: 'whole' }, 'a crying freckled girl with copper-red hair');
-  assert.match(whole, /^A 3D rendered illustration of the main subject, shown whole\./);
-  assert.match(whole, /Nothing is cut off, centered with empty space around it\./);
-  assert.doesNotMatch(whole, /freckled|copper/);
-  assert.doesNotMatch(restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced' }, 'x'), /Nothing is cut off/);
-  // illustration and 3D keep the picture's pose, facing and age (0.80); clip art and line art, which
-  // must change how everything is drawn, stay as free as Loosely
+test('Following the original: illustration and 3D stay close to the picture, and Draw it whole is gone', () => {
   const denoise = (value: string, type: 'clipart' | 'lineart' | 'illustration' | 'render3d') => CLOSENESS.find((c) => c.value === value)!.denoise[type];
-  for (const type of ['illustration', 'render3d'] as const) assert.equal(denoise('whole', type), 0.8, type);
-  for (const type of ['clipart', 'lineart'] as const) assert.ok(denoise('whole', type) >= denoise('loose', type), type);
-  assert.ok(WHOLE_PAD > 0.2 && WHOLE_PAD < 0.6);
+  for (const type of ['illustration', 'render3d'] as const) {
+    assert.deepEqual([denoise('close', type), denoise('balanced', type), denoise('loose', type)], [0.2, 0.3, 0.35], type);
+  }
+  // clip art and line art must change how everything is drawn, so they keep their room
+  for (const type of ['clipart', 'lineart'] as const) assert.ok(denoise('close', type) >= 0.65, type);
+  assert.deepEqual(CLOSENESS.map((c) => c.value), ['close', 'balanced', 'loose']);
   assert.ok(CLOSENESS.every((c) => c.hint.length > 10));
+  // a result made with the removed choice reads as the default
+  assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'balanced');
+  assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
+  assert.doesNotMatch(restylePrompt({ ...DEFAULT_OPTIONS, type: 'render3d', closeness: 'balanced' }, 'a seated pharaoh'), /referenced image|Nothing is cut off/);
 });
 
-test('a cleared picture is cut to what is drawn, with a margin', async () => {
-  const { trimToContent } = await import('../src/restyle/job.ts');
-  // a 200 x 300 clear canvas with a 40 x 60 patch drawn in it
-  const patch = await sharp({ create: { width: 40, height: 60, channels: 4, background: '#cc2222' } }).png().toBuffer();
-  const canvas = await sharp({ create: { width: 200, height: 300, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: patch, left: 80, top: 120 }]).png().toBuffer();
-  const trimmed = await sharp(await trimToContent(canvas, 0.1)).metadata();
-  assert.deepEqual([trimmed.width, trimmed.height], [52, 72]);   // 40 + 2 * 6, 60 + 2 * 6
-  // nothing drawn: left as it was
-  const empty = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
-  assert.deepEqual(await trimToContent(empty), empty);
-});
-
-test('a model\'s mask becomes the picture\'s transparency, and the cutout can then be trimmed', async () => {
-  const { trimToContent } = await import('../src/restyle/job.ts');
+test('a model\'s mask becomes the picture\'s transparency', async () => {
   const picture = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#cc3333' } }).png().toBuffer();
   // a mask as ComfyUI saves one: an RGB picture, white where the subject is
   const patch = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#ffffff' } }).png().toBuffer();
@@ -341,6 +326,4 @@ test('a model\'s mask becomes the picture\'s transparency, and the cutout can th
   // a picture that already has transparency takes the mask in its place
   const clear = await sharp(picture).ensureAlpha(0).png().toBuffer();
   assert.equal((await sharp(await withMask(clear, mask)).metadata()).channels, 4);
-  const trimmed = await sharp(await trimToContent(cut, 0)).metadata();
-  assert.deepEqual([trimmed.width, trimmed.height], [20, 20]);
 });
