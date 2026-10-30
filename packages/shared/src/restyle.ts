@@ -69,6 +69,12 @@ export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise
  * (and a bust at 0.70 from a photo became a man in a flight suit). */
 export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
 
+/** Complete the figure: a picture cut off at the bottom has this share of its height added below, drawn
+ * by an inpaint from a description of what is missing, before the redraw. 0.57 is what was tried (a bust
+ * of 700 pixels given 400 more, which came out as a plausible lower body); +1.0 drew a statue on long
+ * legs, so there is no more than this. */
+export const COMPLETE_SHARE = 0.57;
+
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
  * Keyed by style id; the picture is `style-references/<id>.webp` in the data folder. `weight` is how
@@ -116,11 +122,13 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
+  /** Draw the part of the picture that is cut off below (COMPLETE_SHARE), for 2D and 3D illustrations. */
+  complete: boolean;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '',
+  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -169,6 +177,9 @@ export interface DrawSettings {
   cutout?: { by: 'model' | 'color' | 'none'; with?: string };
   /** The picture was redrawn from its subject cut out and put on flat white, not from the picture as it was. */
   startCutout?: boolean;
+  /** Complete the figure: the share of the height drawn below, what that part was asked for (`prompt`),
+   * and whether the model or a plain template described it. */
+  completed?: { share: number; prompt: string; described: 'model' | 'template' };
   /** The upscaling model that enlarged it, when one did. */
   enlargedWith?: string;
 }
@@ -273,6 +284,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.enhance = raw?.enhance === true;
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
+  o.complete = PICTURE_LED_TYPES.includes(o.type) && raw?.complete === true;
   return o;
 }
 
@@ -313,6 +325,10 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
+  if (s?.completed) {
+    rows.push({ label: 'Complete the figure', value: `${Math.round(s.completed.share * 100)}% of the height drawn below, ${s.completed.described === 'model' ? 'described by the model' : 'from a plain description'}` });
+    rows.push({ label: 'Missing part asked for', value: s.completed.prompt });
+  }
   const ground = BACKGROUND_LABEL[o.background];
   const c = s?.cutout;
   rows.push({

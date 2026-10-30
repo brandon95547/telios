@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, QUALITIES, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -29,12 +29,16 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
 }) {
   const type = typeInfo(options.type);
   const byModel = drawnByModel(options.type);
+  const pictureLed = PICTURE_LED_TYPES.includes(options.type);
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (t !== 'illustration') set('medium', '');
     if (drawnByModel(t)) set('theme', '');
+    if (!PICTURE_LED_TYPES.includes(t)) set('complete', false);
   };
+  // Complete the figure cuts the subject out and draws the missing part by an inpaint: both need ComfyUI to have them
+  const noComplete = health ? (!health.comfy.cutout ? 'This ComfyUI has no background-removal model, which Complete the figure needs.' : !health.comfy.inpaint ? 'This ComfyUI cannot inpaint yet: its Phansora API has to be updated first.' : '') : '';
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
   return (
     <>
@@ -103,6 +107,15 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
         </div>}
+        {pictureLed && (
+          <div className="field">
+            <Toggle label="Complete the figure" on={options.complete && !noComplete} onChange={(v) => set('complete', v)} disabled={!!noComplete}
+              hint="Draws the part of the picture that is cut off at the bottom, before the redraw." />
+            <div className={`sub ${noComplete ? 'warn' : ''}`}>
+              {noComplete || 'For a picture cut off at the bottom (a bust, a half figure): its subject is cut out, about half as much again is drawn below it from a description of what is missing, then the whole is redrawn. About two minutes more a picture. Say how it ends in the extra words (carved feet on a low base, a hem to the floor…).'}
+            </div>
+          </div>
+        )}
         <div className="field">
           <div className="label">Versions of each picture</div>
           <Seg label="Versions of each picture" value={options.variations} onChange={(v) => set('variations', v)} options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))} />

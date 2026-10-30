@@ -31,7 +31,12 @@ export interface ComfyInfo {
   backgroundRemoval: string | null;
   /** Whether ComfyUI can draw from a style picture: USO's three files and its node are there. */
   styleReference: boolean;
+  /** Whether ComfyUI can draw only the part of a picture a mask names (INPAINT_NODES are all there). */
+  inpaint: boolean;
 }
+
+/** The nodes an inpaint workflow uses (workflows.ts inpaintWorkflow) that an old ComfyUI may lack. */
+export const INPAINT_NODES = ['InpaintModelConditioning', 'DifferentialDiffusion', 'ImageToMask'] as const;
 
 export interface Comfy {
   info(force?: boolean): Promise<ComfyInfo>;
@@ -67,15 +72,15 @@ export function gatewayClient(base: string, token: string): Comfy {
     async info(force = false) {
       if (cached && !force && Date.now() - cached.at < 30_000) return cached.info;
       let info: ComfyInfo;
-      if (!user) info = { via: 'api', ready: false, detail: 'COMFYUI_API_TOKEN is not a Phansora API token.', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
+      if (!user) info = { via: 'api', ready: false, detail: 'COMFYUI_API_TOKEN is not a Phansora API token.', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false, inpaint: false };
       else {
         try {
           const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
           if (!res.ok) throw await failure(res, 'The Phansora API refused');
           const body = await res.json();
-          info = { via: 'api', ready: !!body.ready && !!body.flux, detail: body.flux ? body.detail : body.detail || 'The API does not draw with FLUX.', flux: body.flux, upscalers: body.upscalers ?? [], backgroundRemoval: body.backgroundRemoval ?? null, styleReference: body.styleReference === true };
+          info = { via: 'api', ready: !!body.ready && !!body.flux, detail: body.flux ? body.detail : body.detail || 'The API does not draw with FLUX.', flux: body.flux, upscalers: body.upscalers ?? [], backgroundRemoval: body.backgroundRemoval ?? null, styleReference: body.styleReference === true, inpaint: body.inpaint === true };
         } catch (e) {
-          info = { via: 'api', ready: false, detail: (e as Error).name === 'TimeoutError' ? 'The Phansora API did not answer.' : (e as Error).message, flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
+          info = { via: 'api', ready: false, detail: (e as Error).name === 'TimeoutError' ? 'The Phansora API did not answer.' : (e as Error).message, flux: null, upscalers: [], backgroundRemoval: null, styleReference: false, inpaint: false };
         }
       }
       cached = { at: Date.now(), info };
@@ -116,7 +121,7 @@ export function localClient(base: string, files: FluxFiles = FLUX): Comfy {
   return {
     async info(force = false) {
       if (cached && !force && Date.now() - cached.at < 30_000) return cached.info;
-      const info: ComfyInfo = { via: 'local', ready: false, detail: '', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false };
+      const info: ComfyInfo = { via: 'local', ready: false, detail: '', flux: null, upscalers: [], backgroundRemoval: null, styleReference: false, inpaint: false };
       try {
         await get('/system_stats', 5000);
         const gguf = files.unet.endsWith('.gguf');
@@ -133,6 +138,7 @@ export function localClient(base: string, files: FluxFiles = FLUX): Comfy {
           [USO.vision, choices(await objectInfo('CLIPVisionLoader'), 'CLIPVisionLoader', 'clip_name')],
         ] as const;
         info.styleReference = !!(await objectInfo('USOStyleReference'))?.USOStyleReference && have.every(([file, files]) => !!files?.includes(file));
+        info.inpaint = (await Promise.all(INPAINT_NODES.map(async (node) => !!(await objectInfo(node))?.[node]))).every(Boolean);
         if (gguf && unets === null) info.detail = 'ComfyUI is missing the GGUF loader (the ComfyUI-GGUF custom node).';
         else if (missing.length) info.detail = `ComfyUI does not have ${missing.join(', ')} yet (still downloading?).`;
         else { info.ready = true; info.flux = files; }

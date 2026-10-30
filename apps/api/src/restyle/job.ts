@@ -7,10 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
-import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
+import { cutoutWorkflow, drawSize, inpaintWorkflow, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
+import { INPAINT_STEPS, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
@@ -84,8 +85,6 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let subject = input?.subject;
     const pictureLed = PICTURE_LED_TYPES.includes(o.type);
     const quality = qualityOf(o);
-    const [w, h] = drawSize(meta.width! / meta.height!, quality.size);
-    const [tw, th] = targetSize(o.size, [w, h], input?.originalSize);
 
     // a picture of something (a character, an object) is cut out of its ground by a model, before it is
     // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
@@ -93,6 +92,16 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // greens), and cut out by color
     const removal = info.backgroundRemoval;
     const byModel = pictureLed && !!removal;
+
+    // Complete the figure draws a taller picture: the same width, with the cut-off part added below
+    if (o.complete) {
+      if (!info.inpaint) throw new Error('This ComfyUI cannot inpaint, which Complete the figure needs: its Phansora API has to allow InpaintModelConditioning, DifferentialDiffusion and ImageToMask.');
+      if (!byModel) throw new Error('Complete the figure needs the background-removal model, to cut the subject out before the missing part is drawn.');
+    }
+    const height = meta.height! + (o.complete ? growthOf(meta.height!) : 0);
+    const [w, h] = drawSize(meta.width! / height, quality.size);
+    const original = input?.originalSize;
+    const [tw, th] = targetSize(o.size, [w, h], original && o.complete ? [original[0], Math.round((original[1] * height) / meta.height!)] : original);
     const clearing = o.background !== 'white' || byModel;
     const byColor = clearing && pictureLed && !removal;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
@@ -101,6 +110,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
       { label: 'Preparing the picture', seconds: 2 },
       ...(byModel ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
+      ...(o.complete ? [{ label: 'Describing the missing part', seconds: 4 }, { label: 'Drawing the missing part', seconds: 90 }] : []),
       { label: 'Drawing', seconds: 28 },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
@@ -141,6 +151,20 @@ export async function drawResult(id: string, signal: AbortSignal) {
       startPicture = on.png;
       startCutout = on.cut;
     }
+    // the missing part, drawn by an inpaint from a description of it, and the picture's own pixels laid back
+    let completed: DrawSettings['completed'];
+    if (o.complete) {
+      if (!startCutout) throw new Error('Complete the figure needs the background-removal model to find the subject in the picture, and it found none.');
+      const subjectOnly = startPicture as Buffer;
+      stage('Describing the missing part');
+      const described = await readLowerHalf(subjectOnly, signal);
+      const missing = lowerHalfPrompt(described, o.notes);
+      stage('Drawing the missing part');
+      const canvas = await extendCanvas(subjectOnly, [w, h]);
+      const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed }), { 'picture.png': canvas.picture, 'mask.png': canvas.mask }, signal);
+      startPicture = await layBack(drawn, canvas.picture, canvas.mask, [w, h]);
+      completed = { share: COMPLETE_SHARE, prompt: missing, described: described ? 'model' : 'template' };
+    }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
@@ -164,6 +188,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       sampler: info.flux.sampler, scheduler: info.flux.scheduler, easycache: info.flux.easycache,
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
+      ...(completed && { completed }),
     };
     updateResult(id, (x) => { x.settings = settings; });
     let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);

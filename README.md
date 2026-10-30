@@ -66,6 +66,20 @@ color, and a plain background is made clear by color for clip art and line art. 
 model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 a picture takes about
 30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
+**Complete the figure** (a switch for 2D and 3D illustrations) is for a picture cut off at the bottom,
+a bust whose body is missing. The subject is cut out on flat white, 57% of its height is added below,
+and FLUX.1 Dev draws only that new area (an inpaint: a soft mask, through InpaintModelConditioning
+and DifferentialDiffusion) from a sentence describing what is missing, written by the model (a plain
+description if none is set up) with your extra words added ("ending in carved feet on a low base");
+the picture's own pixels are then laid back over the part that was there, and the whole is redrawn
+as usual. A plain redraw cannot extend a picture, and without a description the new area is random
+(a short "complete the figure" drew legs in jeans and boots), so the description is the point. It
+adds about a minute and a half a picture, and some seeds draw thin legs or boots: draw a few
+versions and keep the best. It needs the background-removal model and ComfyUI's inpaint nodes
+(`InpaintModelConditioning`, `DifferentialDiffusion`, `ImageToMask`). Through a Phansora API they
+must be on its gateway's allow-list, and the gateway reports `inpaint`; the switch is greyed out
+until it does. There is no larger amount than 57%: adding 100% drew a statue on long legs.
+
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,
 Rococo and Realistic Anime (`STYLE_REFERENCES` in `packages/shared/src/restyle.ts`, each with how
