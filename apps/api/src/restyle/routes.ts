@@ -105,7 +105,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     }
   }
 
-  router.get('/', (req, res) => { res.json({ inputs: listInputs(), results: listResults() }); });
+  router.get('/', (req, res) => { res.json({ inputs: listInputs(), results: listResults(), now: Date.now() }); });
 
   router.post('/inputs', upload.array('files', 1000), wrap(async (req, res) => {
     const files = (req.files as Express.Multer.File[]) ?? [];
@@ -180,7 +180,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
   router.post('/results/retry', (req, res) => {
     const again = ids(req.body?.ids).map(getResult).filter((r): r is RestyleResult => !!r && ['failed', 'canceled'].includes(r.status) && fs.existsSync(path.join(resultDir(r.id), 'source.png')));
     for (const r of again) {
-      saveResult({ ...r, status: 'queued', error: undefined, stage: undefined, finishedAt: undefined, createdAt: r.createdAt });
+      saveResult({ ...r, status: 'queued', error: undefined, stage: undefined, progress: undefined, finishedAt: undefined, createdAt: r.createdAt });
       toWorker({ type: 'restyle', resultId: r.id });
     }
     res.json({ queued: again.length });

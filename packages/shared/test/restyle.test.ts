@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_OPTIONS, settingRows } from '../src/index.ts';
+import { DEFAULT_OPTIONS, progressAt, settingRows } from '../src/index.ts';
 import type { DrawSettings, RestyleOptions } from '../src/index.ts';
 
 const drawn: DrawSettings = { model: 'flux1-dev-Q4_K_S.gguf', width: 912, height: 1152, steps: 20, denoise: 0.75, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -47,4 +47,16 @@ test('a style that wants a picture and had none says it was drawn from words alo
   assert.equal(rows['Kept as'], 'PNG, 2× as drawn, 1824 × 2304 px, enlarged with 4x-UltraSharp.pth');
   // a style with no picture to want has no such row
   assert.equal(rowsOf(settingRows({ options: options({ style: 'tonalism' }), settings: drawn }))['Style picture'], undefined);
+});
+
+test('progress eases through a stage and waits near its end, never passing it', () => {
+  const at = '2026-10-30T12:00:00.000Z';
+  const p = { from: 0.2, to: 0.6, at, seconds: 20 };
+  const t0 = Date.parse(at);
+  assert.equal(progressAt(p, t0), 0.2);
+  assert.equal(progressAt(p, t0 - 5000), 0.2, 'a clock a little behind the server\'s does not move it back');
+  const early = progressAt(p, t0 + 5000), onTime = progressAt(p, t0 + 20000), late = progressAt(p, t0 + 600000);
+  assert.ok(0.2 < early && early < onTime && onTime < late, 'forward with time');
+  assert.ok(onTime > 0.2 + 0.4 * 0.9 && onTime < 0.6, 'nearly through the stage by the time it usually ends');
+  assert.ok(late <= 0.6 + 1e-9, 'a stage that runs long stops at its end');
 });

@@ -14,6 +14,7 @@ import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../c
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
+import { stagesOf } from './progress.ts';
 import { getInput, rel, resultDir, updateInput, updateResult } from './store.ts';
 
 export const MAX_SIDE = 8192;
@@ -63,13 +64,12 @@ export async function screenCopies(png: Buffer, dir: string) {
 }
 
 export async function drawResult(id: string, signal: AbortSignal) {
-  const stage = (s: string) => updateResult(id, (r) => { r.stage = s; });
-  const r = updateResult(id, (x) => { x.status = 'running'; x.stage = 'Starting'; x.startedAt = new Date().toISOString(); delete x.error; });
+  const r = updateResult(id, (x) => { x.status = 'running'; x.stage = 'Starting'; delete x.progress; x.startedAt = new Date().toISOString(); delete x.error; });
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
   if (o.type === 'vector') {   // drawn by the model (vector.ts), and never sent here
-    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; x.error = 'A flat SVG is drawn by the model, not by ComfyUI.'; });
+    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; delete x.progress; x.error = 'A flat SVG is drawn by the model, not by ComfyUI.'; });
     return;
   }
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));
@@ -82,7 +82,33 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // what it shows: read once per input, kept with it, and only where the prompt says it
     const input = getInput(r.inputId);
     let subject = input?.subject;
-    if (!subject && !PICTURE_LED_TYPES.includes(o.type)) {
+    const pictureLed = PICTURE_LED_TYPES.includes(o.type);
+    const quality = qualityOf(o);
+    const [w, h] = drawSize(meta.width! / meta.height!, quality.size);
+    const [tw, th] = targetSize(o.size, [w, h], input?.originalSize);
+
+    // a picture of something (a character, an object) is cut out of its ground by a model, before it is
+    // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
+    // black or green); without a model it is drawn on a flat key color, green (blue if the picture has
+    // greens), and cut out by color
+    const removal = info.backgroundRemoval;
+    const byModel = pictureLed && !!removal;
+    const clearing = o.background !== 'white' || byModel;
+    const byColor = clearing && pictureLed && !removal;
+    const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
+    // the stages this picture goes through, so the progress bar knows its way
+    const stage = stagesOf(id, [
+      ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
+      { label: 'Preparing the picture', seconds: 2 },
+      ...(byModel ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
+      { label: 'Drawing', seconds: 28 },
+      ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
+      ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
+      ...(typeInfo(o.type).vector ? [{ label: 'Tracing to SVG', seconds: 12 }] : []),
+      { label: 'Finishing', seconds: 2 },
+    ]);
+
+    if (!subject && !pictureLed) {
       stage('Reading the picture');
       const read = await readSubject(source, signal);
       if (read) {
@@ -90,24 +116,13 @@ export async function drawResult(id: string, signal: AbortSignal) {
         if (input) updateInput(input.id, (i) => { i.subject = read; });
       }
     }
-    // a picture of something (a character, an object) is cut out of its ground by a model, before it is
-    // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
-    // black or green); without a model it is drawn on a flat key color, green (blue if the picture has
-    // greens), and cut out by color
-    const pictureLed = PICTURE_LED_TYPES.includes(o.type);
-    const removal = info.backgroundRemoval;
-    const byModel = pictureLed && !!removal;
-    const clearing = o.background !== 'white' || byModel;
-    const byColor = clearing && pictureLed && !removal;
+    stage('Preparing the picture');
     const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
     const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined);
-    const quality = qualityOf(o);
     const warnings: string[] = [];
-    const [w, h] = drawSize(meta.width! / meta.height!, quality.size);
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
 
-    stage('Drawing');
     // a scan's gray or yellowed paper, made white first: redrawn, it would stay gray
     await python(['whiten', path.join(dir, 'source.png'), path.join(scratch, 'white.png')]);
     let ground = path.join(scratch, 'white.png');
@@ -126,6 +141,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       startPicture = on.png;
       startCutout = on.cut;
     }
+    stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
 
@@ -177,8 +193,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (cleared && o.background !== 'transparent') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
     }
 
-    const [tw, th] = targetSize(o.size, [w, h], input?.originalSize);
-    if (tw > w && o.enhance && info.upscalers.length) {
+    if (enlarges) {
       // the upscaling model redraws fine detail as it enlarges; it works on color, so the
       // transparency is enlarged here and put back
       stage('Enlarging');
@@ -210,7 +225,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       x.status = 'done';
       x.settings = settings;
       if (warnings.length) x.warning = warnings.join(' ');
-      delete x.stage;
+      delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       x.size = [tw, th];
       x.files = { png: rel(path.join(dir, 'result.png')), ...(svg && { svg }), thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')) };
@@ -219,7 +234,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const canceled = signal.aborted;
     updateResult(id, (x) => {
       x.status = canceled ? 'canceled' : 'failed';
-      delete x.stage;
+      delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       if (!canceled) x.error = (e as Error).message;
     });

@@ -48,7 +48,7 @@ export const auth = {
 };
 
 export const restyle = {
-  state: () => fetch('/api/restyle').then((r) => json<{ inputs: RestyleInput[]; results: RestyleResult[] }>(r)),
+  state: () => fetch('/api/restyle').then((r) => json<{ inputs: RestyleInput[]; results: RestyleResult[]; now: number }>(r)),
   upload: (files: File[], paths: string[] | null, onProgress?: (done: number) => void) => {
     const form = new FormData();
     for (const f of files) form.append('files', f);

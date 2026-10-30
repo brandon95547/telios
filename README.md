@@ -7,7 +7,8 @@ ComfyUI in the look you choose: clip art, line art, a 2D illustration or a 3D il
 of Talari's art styles (and a medium, for 2D illustrations) and one of its themes. Add one picture,
 several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
 results come back in a grid to tick, download as a zip (in folders by type, style and theme), or
-delete. Clip art and line art come as SVG too. A fifth choice, **Flat SVG** (under Vector, beside
+delete. Each picture being drawn shows what it is doing and a progress bar, and the grid shows how far
+the whole batch has come. Clip art and line art come as SVG too. A fifth choice, **Flat SVG** (under Vector, beside
 2D and 3D), is drawn by a model instead of ComfyUI: new flat vector art of a frame, border, corner
 or ornament, one layer per color, with the data that fits a frame or border to any page. It is
 Vector redraw's drawing loop (below) run from the same grid, so it needs a model and no ComfyUI.

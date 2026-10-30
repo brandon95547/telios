@@ -173,6 +173,23 @@ export interface DrawSettings {
   enlargedWith?: string;
 }
 
+/** How far a running result has come. The stage it is in covers `from` to `to` of the whole job (0 to 1),
+ * began at `at` and takes about `seconds`: the server knows when a stage starts, not how far into it
+ * the work is, so `progressAt` eases through it with the clock. */
+export interface RestyleProgress {
+  from: number;
+  to: number;
+  at: string;
+  seconds: number;
+}
+
+/** The share of the job done at `now` (ms): the stage's start, easing towards its end, which it only
+ * reaches when the next stage reports in. A stage that runs long waits near its end. */
+export function progressAt(p: RestyleProgress, now: number): number {
+  const spent = Math.max(0, now - Date.parse(p.at)) / 1000;
+  return p.from + (p.to - p.from) * (1 - Math.exp((-2.5 * spent) / p.seconds));
+}
+
 export interface RestyleResult {
   id: string;
   batchId: string;
@@ -184,6 +201,7 @@ export interface RestyleResult {
   variation: number;
   status: ResultStatus;
   stage?: string;
+  progress?: RestyleProgress;
   error?: string;
   /** Something the result is not, that was asked for: drawn on white, the background not cleared. */
   warning?: string;

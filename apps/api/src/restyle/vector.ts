@@ -14,6 +14,7 @@ import { provider } from '../engine/llm.ts';
 import { newRun } from '../engine/newrun.ts';
 import { designDir, getDesign, getRun, newId, saveDesign, updateDesign } from '../store.ts';
 import { screenCopies } from './job.ts';
+import { drawingStage, FINISHING, READING, setStage } from './progress.ts';
 import { rel, resultDir, updateResult } from './store.ts';
 
 /** The two steps the job worker owns, which this job borrows. */
@@ -25,8 +26,8 @@ export interface VectorSteps {
 }
 
 export async function drawVector(id: string, signal: AbortSignal, steps: VectorSteps) {
-  const stage = (s: string) => updateResult(id, (x) => { x.stage = s; });
-  const r = updateResult(id, (x) => { x.status = 'running'; x.stage = 'Starting'; x.startedAt = new Date().toISOString(); delete x.error; });
+  const stage = (s: string, part?: [number, number, number] | null) => (part ? setStage(id, s, ...part) : updateResult(id, (x) => { x.stage = s; }));
+  const r = updateResult(id, (x) => { x.status = 'running'; x.stage = 'Starting'; delete x.progress; x.startedAt = new Date().toISOString(); delete x.error; });
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
@@ -49,7 +50,7 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     // the result was deleted meanwhile: nothing of it is kept
     if (!updateResult(id, (x) => { x.designId = design.id; })) { fs.rmSync(ddir, { recursive: true, force: true }); return; }
 
-    stage('Measuring and reading the picture');
+    stage('Measuring and reading the picture', READING);
     await steps.read(design.id);
     stopped();
     const read = getDesign(design.id);
@@ -58,14 +59,14 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     updateDesign(design.id, (d) => { if (d.reading) d.reading.confirmed = true; });
 
     const run = newRun(getDesign(design.id)!, 'reillustrate', { note: o.notes || undefined });
-    stage('Studying the picture');
-    await steps.draw(run.id, { signal, onEvent: (e) => { if (e.type === 'status' && e.status === 'running' && e.message) stage(e.message); } });
+    stage('Studying the picture', drawingStage('plan', '', run.options.maxRenders));
+    await steps.draw(run.id, { signal, onEvent: (e) => { if (e.type === 'status' && e.status === 'running' && e.message) stage(e.message, drawingStage(e.stage, e.message, run.options.maxRenders)); } });
     stopped();
     const done = getRun(run.id);
     if (done?.status !== 'done' || !done.result) throw new Error(done?.error ?? 'The drawing did not finish.');
     const res = done.result;
 
-    stage('Finishing');
+    stage('Finishing', FINISHING);
     const from = (p: string) => path.join(DATA, p);
     let png = fs.readFileSync(from(res.files.preview));
     if (o.background !== 'transparent') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
@@ -77,7 +78,7 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
     updateResult(id, (x) => {
       x.status = 'done';
-      delete x.stage;
+      delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       x.size = [meta.width!, meta.height!];
       x.drawing = {
@@ -93,7 +94,7 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     const canceled = signal.aborted;
     updateResult(id, (x) => {
       x.status = canceled ? 'canceled' : 'failed';
-      delete x.stage;
+      delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       if (!canceled) x.error = (e as Error).message;
     });

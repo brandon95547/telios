@@ -3,6 +3,7 @@ import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, findStyle, findTheme, type
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
+import { BatchProgress, TileProgress } from './Progress.tsx';
 import { Viewer } from './Viewer.tsx';
 
 // What this browser last chose: a convenience, so it may be missing (a private window).
@@ -49,6 +50,7 @@ export function Studio({ health }: { health: Health | null }) {
   const [viewing, setViewing] = useState<number | null>(null);
   const [over, setOver] = useState(false);
   const [working, setWorking] = useState(false);
+  const [skew, setSkew] = useState(0);   // how far the server's clock is ahead of this page's, for the progress bars
 
   useEffect(() => {
     try { localStorage.setItem(SAVED, JSON.stringify({ options, batchAll, subfolders })); } catch { /* not kept */ }
@@ -60,6 +62,7 @@ export function Studio({ health }: { health: Health | null }) {
       const s = await restyle.state();
       setInputs(s.inputs);
       setResults(s.results);
+      setSkew(s.now - Date.now());
       const exist = new Set(s.results.map((r) => r.id));
       setKept((k) => new Set([...k].filter((id) => exist.has(id))));
       const have = new Set(s.inputs.map((i) => i.id));
@@ -215,6 +218,7 @@ export function Studio({ health }: { health: Health | null }) {
               <button type="button" className="small" disabled={!kept.size || working} onClick={removeResults}>Delete ticked ({kept.size})</button>
               <button type="button" className="small primary" disabled={!keptDone.length || working} onClick={download}>Download ticked ({keptDone.length})</button>
             </div>
+            <BatchProgress results={results} skew={skew} />
             <p className="sub">Tick the ones to keep, then download them; or tick the ones to delete. Space in the large view ticks one.</p>
             <div className="tiles results">
               {results.map((r) => {
@@ -225,7 +229,7 @@ export function Studio({ health }: { health: Health | null }) {
                     <input type="checkbox" checked={kept.has(r.id)} onChange={() => setKept((s) => toggled(s, r.id))} aria-label={`Tick ${r.inputName}`} />
                     <button type="button" className={`tile-img ${r.files ? ground : ''}`} disabled={!r.files} onClick={() => setViewing(at)} aria-label={`View ${r.inputName}`}>
                       {r.files ? <img src={api.file(r.files.thumb)} alt="" loading="lazy" width={r.size?.[0]} height={r.size?.[1]} />
-                        : busyResult(r) ? <span className="tile-wait"><div className="spinner" />{r.status === 'queued' ? 'Waiting' : r.stage ?? 'Drawing'}</span>
+                        : busyResult(r) ? <TileProgress result={r} skew={skew} />
                         : <span className="tile-error">{r.status === 'canceled' ? 'Stopped' : r.error}</span>}
                     </button>
                     <div className="tile-name">{r.inputName}{r.options.variations > 1 ? ` · v${r.variation}` : ''}</div>

@@ -118,6 +118,33 @@ test('a flat SVG result gets the SVG, its fitting data and a preview, and its de
   assert.ok(!fs.existsSync(designDir(design.id)), 'deleting the result takes its design too');
 });
 
+test('a flat SVG reports its stages as progress that only moves forward, and none once it is done', async () => {
+  await makeResult('xvec4');
+  const finish = finishes();
+  const seen: [string | undefined, number][] = [];
+  const draw = async (runId: string, hooks: { signal: AbortSignal; onEvent: (e: RunEvent) => void }) => {
+    const watch = (stage: 'plan' | 'draw' | 'critique', message: string) => {
+      hooks.onEvent({ type: 'status', status: 'running', stage, message });
+      const r = getResult('xvec4')!;
+      seen.push([r.stage, r.progress!.from]);
+    };
+    watch('plan', 'Studying the original');
+    watch('draw', 'Running drawing 1');
+    watch('critique', 'Checking drawing 1');
+    watch('draw', 'Running drawing 2');
+    watch('critique', 'Checking the seams and the fit');
+    await finish(runId, hooks);
+  };
+  await drawVector('xvec4', new AbortController().signal, { read, draw });
+  assert.deepEqual(seen.map(([s]) => s), ['Studying the original', 'Running drawing 1', 'Checking drawing 1', 'Running drawing 2', 'Checking the seams and the fit']);
+  seen.forEach(([, from], i) => { if (i) assert.ok(from > seen[i - 1][1], `${seen[i][0]} is further on than ${seen[i - 1][0]}`); });
+  assert.ok(seen[0][1] >= 0.1 && seen.at(-1)![1] < 1);
+  const r = getResult('xvec4')!;
+  assert.equal(r.status, 'done');
+  assert.equal(r.progress, undefined);
+  removeResult('xvec4');
+});
+
 test('a background other than transparent is put behind the preview, not the SVG', async () => {
   await makeResult('xvec2', { background: 'white' });
   await drawVector('xvec2', new AbortController().signal, { read, draw: finishes() });
