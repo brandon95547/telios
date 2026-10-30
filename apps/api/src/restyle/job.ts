@@ -46,11 +46,13 @@ export async function trimToContent(png: Buffer, margin = 0.04) {
   return sharp(png).extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
 }
 
-/** A picture with a mask (white kept) as its transparency. */
-async function withMask(png: Buffer, mask: Buffer) {
+/** A picture with a mask (white kept) as its transparency. Opaque first and the mask joined after, in two
+ * steps: in one, sharp strips the alpha that was just joined. */
+export async function withMask(png: Buffer, mask: Buffer) {
   const { width, height } = await sharp(png).metadata();
   const alpha = await sharp(mask).greyscale().resize(width, height).raw().toBuffer();
-  return sharp(png).removeAlpha().joinChannel(alpha, { raw: { width: width!, height: height!, channels: 1 } }).png().toBuffer();
+  const opaque = await sharp(png).removeAlpha().png().toBuffer();
+  return sharp(opaque).joinChannel(alpha, { raw: { width: width!, height: height!, channels: 1 } }).png().toBuffer();
 }
 
 export async function drawResult(id: string, signal: AbortSignal) {

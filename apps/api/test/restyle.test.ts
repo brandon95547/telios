@@ -11,7 +11,7 @@ const { cleanOptions, DEFAULT_OPTIONS, STYLE_REFERENCES, wantsStyleReference, fi
 const { restylePrompt, subjectFromName } = await import('../src/restyle/prompt.ts');
 const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, USO } = await import('../src/comfy/workflows.ts');
 const { gatewayClient, localClient, tokenUser } = await import('../src/comfy/client.ts');
-const { targetSize } = await import('../src/restyle/job.ts');
+const { targetSize, withMask } = await import('../src/restyle/job.ts');
 const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
 
 const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip_l.safetensors', vae: 'ae.safetensors', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -324,4 +324,22 @@ test('a cleared picture is cut to what is drawn, with a margin', async () => {
   // nothing drawn: left as it was
   const empty = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
   assert.deepEqual(await trimToContent(empty), empty);
+});
+
+test('a model\'s mask becomes the picture\'s transparency, and the cutout can then be trimmed', async () => {
+  const { trimToContent } = await import('../src/restyle/job.ts');
+  const picture = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#cc3333' } }).png().toBuffer();
+  // a mask as ComfyUI saves one: an RGB picture, white where the subject is
+  const patch = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const mask = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#000000' } }).composite([{ input: patch, left: 10, top: 5 }]).png().toBuffer();
+  const cut = await withMask(picture, mask);
+  assert.equal((await sharp(cut).metadata()).channels, 4);
+  const alpha = await sharp(cut).extractChannel('alpha').raw().toBuffer();
+  assert.equal(alpha[15 * 40 + 20], 255);   // inside the subject
+  assert.equal(alpha[2 * 40 + 2], 0);       // outside it
+  // a picture that already has transparency takes the mask in its place
+  const clear = await sharp(picture).ensureAlpha(0).png().toBuffer();
+  assert.equal((await sharp(await withMask(clear, mask)).metadata()).channels, 4);
+  const trimmed = await sharp(await trimToContent(cut, 0)).metadata();
+  assert.deepEqual([trimmed.width, trimmed.height], [20, 20]);
 });
