@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { CLOSENESS, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { CLOSENESS, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
@@ -52,10 +52,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const source = fs.readFileSync(path.join(dir, 'source.png'));
     const meta = await sharp(source).metadata();
 
-    // what it shows: read once per input, kept with it
+    // what it shows: read once per input, kept with it, and only where the prompt says it
     const input = getInput(r.inputId);
     let subject = input?.subject;
-    if (!subject) {
+    if (!subject && !PICTURE_LED_TYPES.includes(o.type)) {
       stage('Reading the picture');
       const read = await readSubject(source, signal);
       if (read) {

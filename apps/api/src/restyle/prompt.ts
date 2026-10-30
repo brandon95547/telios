@@ -2,7 +2,7 @@
 // (Talari's words for it), the medium, the theme and the background, in plain sentences, which
 // FLUX reads better than tag lists.
 
-import { findMedium, findStyle, findTheme, type RestyleOptions } from '@telios/shared';
+import { PICTURE_LED_TYPES, findMedium, findStyle, findTheme, type RestyleOptions } from '@telios/shared';
 
 const TYPE_WORDS: Record<RestyleOptions['type'], (subject: string) => string> = {
   clipart: (s) => `Colorful vector clip art of ${s}, in a flat design style: bold clean outlines, large areas of solid flat color in a bright full-color palette, simple shapes, little detail, no gradients, no shading and no texture.`,
@@ -25,8 +25,9 @@ const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
 export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor) {
-  // a phrase the model wrote starts with a capital; inside the sentence it should not
-  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
+  // a phrase the model wrote starts with a capital; inside the sentence it should not. Where the
+  // picture carries what it shows, nothing is said about it.
+  const what = PICTURE_LED_TYPES.includes(o.type) ? 'the referenced image' : subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
   const parts = [TYPE_WORDS[o.type](what)];
   const style = findStyle(o.style);
   if (style) parts.push(`In this style: ${style.words}.`);

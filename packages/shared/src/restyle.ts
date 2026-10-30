@@ -51,6 +51,10 @@ export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise
   { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.3, render3d: 0.3 } },
   { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.35, render3d: 0.35 } },
 ];
+/** The output types redrawn from so little of the way (CLOSENESS) that the picture carries what it
+ * shows, so the prompt does not describe it. Clip art and line art are redrawn from most of the way,
+ * and the words carry the subject: tried without them at 0.80, FLUX drew a skull and a heap of rocks. */
+export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
 
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
