@@ -30,7 +30,7 @@ function SelectAll({ ids, selected, set, label }: { ids: string[]; selected: Set
   return (
     <label className="select-all">
       <input type="checkbox" checked={all} ref={(el) => { if (el) el.indeterminate = !all && ids.some((id) => selected.has(id)); }}
-        onChange={() => set(all ? new Set() : new Set(ids))} disabled={!ids.length} />
+        onChange={() => set(all ? new Set([...selected].filter((id) => !ids.includes(id))) : new Set([...selected, ...ids]))} disabled={!ids.length} />
       {all ? 'Select none' : `Select all ${label}`}
     </label>
   );
@@ -130,6 +130,9 @@ export function Studio({ health }: { health: Health | null }) {
   const keptDone = done.filter((r) => kept.has(r.id));
   const running = results.filter(busyResult);
   const failed = results.filter((r) => r.status === 'failed' || r.status === 'canceled');
+  // Try again takes the ticked ones among the stopped and failed, or all of them when none is ticked
+  const tickedFailed = failed.filter((r) => kept.has(r.id));
+  const again = tickedFailed.length ? tickedFailed : failed;
   const download = () => act(async () => {
     const { url } = await restyle.download(keptDone.map((r) => r.id), subfolders);
     location.href = url;
@@ -213,9 +216,10 @@ export function Studio({ health }: { health: Health | null }) {
             <div className="block-head">
               <h2>Results <span className="count">{done.length}{running.length ? ` · ${running.length} to go` : ''}</span></h2>
               <SelectAll ids={done.map((r) => r.id)} selected={kept} set={setKept} label="" />
+              {failed.length > 0 && <SelectAll ids={failed.map((r) => r.id)} selected={kept} set={setKept} label={`stopped & failed (${failed.length})`} />}
               <span className="spacer" />
               {running.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.stop(running.map((r) => r.id)))}>Stop the rest</button>}
-              {failed.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.retry(failed.map((r) => r.id)))}>Try failed again</button>}
+              {failed.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.retry(again.map((r) => r.id)))}>{tickedFailed.length ? 'Try ticked again' : 'Try stopped & failed again'} ({again.length})</button>}
               <button type="button" className="small" disabled={!kept.size || working} onClick={removeResults}>Delete ticked ({kept.size})</button>
               <button type="button" className="small primary" disabled={!keptDone.length || working} onClick={download}>Download ticked ({keptDone.length})</button>
             </div>
