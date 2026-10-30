@@ -8,7 +8,7 @@ import zipfile
 import numpy as np
 from PIL import Image, ImageDraw
 
-from telios_worker.restyle import key, pack, unzip, whiten
+from telios_worker.restyle import chroma, ground, key, pack, pick_key, unzip, whiten
 
 
 def png(color=(200, 30, 30), size=(8, 8)):
@@ -104,6 +104,107 @@ class Whiten(unittest.TestCase):
         got, px = self.run_on(im)
         self.assertIsNone(got['paper'])
         self.assertTrue((px == np.asarray(im)).all())
+
+
+class Chroma(unittest.TestCase):
+    """A character drawn on a key-color backdrop the way FLUX draws one: a gradient wall, a lighter floor,
+    green light on the subject, a green reflection in an eye, a strand of hair that is half backdrop."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.src = os.path.join(self.dir, 'drawn.png')
+        self.out = os.path.join(self.dir, 'clear.png')
+
+    def scene(self, wall=(60, 200, 70), dark=(30, 140, 40), floor=(70, 185, 80), cast=(27, 39, 28), reflection=(30, 150, 60)):
+        h = w = 240
+        rgb = np.zeros((h, w, 3), np.float64)
+        t = np.linspace(0, 1, w)[None, :, None]
+        rgb[:] = np.array(wall) * (1 - t) + np.array(dark) * t   # the wall's gradient, left to right
+        rgb[190:] = floor                                        # the floor
+        yy, xx = np.mgrid[:h, :w]
+        disc = (yy - 100) ** 2 + (xx - 120) ** 2 < 55 ** 2
+        rgb[disc] = (240, 140, 60)                               # orange hair
+        rgb[(yy > 140) & (yy < 215) & (xx > 95) & (xx < 145)] = cast           # dark clothes in the backdrop's light
+        rgb[(yy - 95) ** 2 + (xx - 120) ** 2 < 100] = (40, 160, 170)            # a teal iris
+        rgb[(yy - 90) ** 2 + (xx - 114) ** 2 < 16] = reflection                 # the backdrop reflected in it
+        for x in range(20, 70):                                  # a strand: half hair, half backdrop
+            for y in (60 + x // 4, 61 + x // 4):
+                rgb[y, x] = 0.5 * np.array((240, 140, 60)) + 0.5 * rgb[y, x]
+        Image.fromarray(rgb.round().astype(np.uint8)).save(self.src)
+        return rgb
+
+    def alpha(self):
+        return np.asarray(Image.open(self.out).convert('RGBA'))[..., 3]
+
+    def test_the_backdrop_goes_whatever_its_gradient_and_the_character_stays(self):
+        self.scene()
+        got = chroma(self.src, self.out, 'green')
+        a = self.alpha()
+        self.assertTrue((a[:40, :40] == 0).all() and (a[:40, -40:] == 0).all())   # a pale and a dark corner
+        self.assertTrue((a[200:, :] == 0)[:, :90].all())                           # the floor
+        self.assertTrue((a[100, 100:140] == 255).all())                            # hair, face
+        self.assertTrue((a[160:200, 105:135] >= 245).all())                        # dark clothes under green light
+        self.assertGreater(got['clear'], 0.4)
+
+    def test_a_green_reflection_in_an_eye_is_not_taken_for_the_backdrop(self):
+        self.scene()
+        chroma(self.src, self.out, 'green')
+        self.assertEqual(self.alpha()[90, 114], 255)
+
+    def test_a_strand_that_is_half_backdrop_comes_out_orange_not_olive(self):
+        self.scene()
+        chroma(self.src, self.out, 'green')
+        rgba = np.asarray(Image.open(self.out).convert('RGBA')).astype(int)
+        strand = rgba[60 + 40 // 4, 40]
+        self.assertGreater(strand[3], 60)                    # kept, though part backdrop
+        self.assertGreater(strand[0], strand[1] + 40)        # red well over green: orange, not olive
+
+    def test_blue_works_the_same_way(self):
+        self.scene(wall=(60, 70, 200), dark=(30, 40, 140), floor=(70, 80, 185), cast=(27, 28, 39), reflection=(30, 60, 150))
+        got = chroma(self.src, self.out, 'blue')
+        a = self.alpha()
+        self.assertTrue((a[:40, :40] == 0).all() and (a[100, 100:140] == 255).all())
+        self.assertGreater(got['clear'], 0.4)
+
+    def test_a_picture_with_no_such_backdrop_is_left_whole_and_says_nothing_was_cleared(self):
+        Image.new('RGB', (64, 64), (240, 140, 60)).save(self.src)
+        got = chroma(self.src, self.out, 'green')
+        self.assertEqual(got['clear'], 0.0)
+        self.assertTrue((self.alpha() == 255).all())
+
+
+class KeyChoice(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.src = os.path.join(self.dir, 'a.png')
+
+    def test_green_unless_the_picture_has_greens_and_then_blue(self):
+        Image.new('RGB', (64, 64), (240, 140, 60)).save(self.src)
+        self.assertEqual(pick_key(self.src)['color'], 'green')
+        Image.new('RGB', (64, 64), (40, 180, 70)).save(self.src)
+        self.assertEqual(pick_key(self.src)['color'], 'blue')
+        Image.new('RGB', (64, 64), (30, 60, 200)).save(self.src)   # a blue picture is cut from green
+        self.assertEqual(pick_key(self.src)['color'], 'green')
+        Image.new('RGB', (64, 64), (128, 128, 128)).save(self.src)
+        self.assertEqual(pick_key(self.src)['color'], 'green')
+
+    def test_the_white_ground_is_painted_in_the_key_color_and_the_art_is_not(self):
+        im = Image.new('RGB', (80, 80), 'white')
+        for x in range(30, 50):
+            for y in range(30, 50):
+                im.putpixel((x, y), (200, 30, 30))
+        im.save(self.src)
+        out = os.path.join(self.dir, 'g.png')
+        self.assertGreater(ground(self.src, out, '#00ff00')['ground'], 0.8)
+        got = Image.open(out)
+        self.assertEqual(got.getpixel((2, 2)), (0, 255, 0))
+        self.assertEqual(got.getpixel((40, 40)), (200, 30, 30))
+
+    def test_a_picture_that_fills_its_frame_has_no_ground_to_paint(self):
+        Image.new('RGB', (40, 40), (90, 40, 30)).save(self.src)
+        out = os.path.join(self.dir, 'g.png')
+        self.assertEqual(ground(self.src, out)['ground'], 0.0)
+        self.assertEqual(Image.open(out).getpixel((2, 2)), (90, 40, 30))
 
 
 class Pack(unittest.TestCase):

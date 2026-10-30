@@ -1,5 +1,5 @@
 """Restyle's picture work that Pillow and numpy do best: a zip's pictures unpacked, an EPS drawn
-as pixels, a plain background made transparent, and the pictures chosen packed into a zip."""
+as pixels, a plain or a key-color background made transparent, and the pictures chosen packed into a zip."""
 import os
 import zipfile
 
@@ -128,6 +128,129 @@ def key(path, out, ground='white', everything=False, tolerance=40, window=0.04):
     rgba = np.dstack([np.clip(color, 0, 255), alpha * 255]).round().astype(np.uint8)
     Image.fromarray(rgba).save(out)
     return {'size': [w, h], 'clear': round(float(bg.mean()), 4)}
+
+
+def _smooth(x, lo, hi):
+    t = np.clip((x - lo) / (hi - lo), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def pick_key(path):
+    """The key color a picture can be cut out of: green, unless the picture has greens of its own
+    (a green dress, leaves) that green would take with it, and then blue. Magenta was tried and
+    turns skin pink. Chosen from the colors the picture already has."""
+    hsv = np.asarray(ImageOps.exif_transpose(Image.open(path)).convert('RGB').convert('HSV')).astype(np.float64)
+    hue, sat, val = hsv[..., 0] * 360 / 255, hsv[..., 1] / 255, hsv[..., 2] / 255
+    colored = (sat > 0.3) & (val > 0.2)
+    green = float(((hue > 75) & (hue < 170) & colored).mean())
+    blue = float(((hue > 190) & (hue < 265) & colored).mean())
+    return {'color': 'blue' if green > max(blue, 0.03) else 'green', 'green': round(green, 4), 'blue': round(blue, 4)}
+
+
+def ground(path, out, color='#00ff00', least=0.01):
+    """A picture's white ground (the white that reaches its edges) painted in `color`: redrawn from a
+    picture on white, FLUX keeps the white ground whatever it is asked, but it keeps any other one."""
+    rgb = np.asarray(ImageOps.exif_transpose(Image.open(path)).convert('RGB')).astype(np.float64)
+    low = rgb.min(axis=2)
+    labels, n = ndimage.label(low > 235)
+    edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])).tolist()) - {0}
+    region = np.isin(labels, list(edge)) if edge else np.zeros(low.shape, bool)
+    if region.mean() < least:   # no ground to speak of: a picture that fills its frame
+        Image.fromarray(rgb.round().astype(np.uint8)).save(out)
+        return {'ground': 0.0}
+    amount = np.where(ndimage.binary_dilation(region, iterations=2), np.clip((low - 200) / 55, 0, 1), 0)[..., None]
+    key = np.array([int(color[i:i + 2], 16) for i in (1, 3, 5)], np.float64)
+    Image.fromarray((rgb * (1 - amount) + key * amount).round().astype(np.uint8)).save(out)
+    return {'ground': round(float(region.mean()), 4)}
+
+
+def chroma(path, out, color='green', island=0.0005, hole=0.001, reach=24):
+    """A picture drawn on a flat key-color backdrop (green or blue) cut out of it. FLUX draws the
+    backdrop with a gradient, a floor and a glow, so it is found by how far each pixel leans to the key
+    color against its own brightness, with the thresholds set from the picture's own backdrop: a pale
+    wall, a dark corner and a floor all go, orange hair, skin and black clothes stay. Along the cut a
+    pixel is part backdrop: how much is worked out and taken out of its color, so a strand of hair
+    comes out orange, not olive. A small enclosed patch that only looks like backdrop (a green
+    reflection in an eye) is kept; a real gap (a hair loop, between an arm and the body) is cleared.
+    Written with the backdrop's share in `clear` (0 when the picture has no such backdrop)."""
+    rgb = np.asarray(ImageOps.exif_transpose(Image.open(path)).convert('RGB')).astype(np.float64)
+    h, w = rgb.shape[:2]
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    if color == 'green':
+        main, excess, wide = g, g - np.maximum(r, b), g - (r + b) / 2
+    else:
+        main, excess, wide = b, b - np.maximum(r, g), b - (r + g) / 2
+    share = excess / np.maximum(main, 1) * np.clip(main / 40.0, 0, 1)   # a very dark pixel's color is noise
+    leaning = share > 0.35
+    if leaning.mean() < 0.02:
+        Image.fromarray(rgb.round().astype(np.uint8)).save(out)
+        return {'size': [w, h], 'clear': 0.0, 'partly': 0.0}
+    typical = float(np.median(share[leaning]))
+    lo, hi = float(np.clip(0.58 * typical, 0.25, 0.45)), float(np.clip(0.82 * typical, 0.38, 0.62))
+    alpha = 1 - _smooth(share, lo, hi)
+    # and by how much, in absolute terms: dark clothes in the backdrop's light lean to the key color by
+    # ratio, because dark colors are small, but nowhere near as far as the wall does
+    wall = float(np.median(excess[leaning]))
+    alpha = np.maximum(alpha, 1 - _smooth(excess, 0.25 * wall, 0.5 * wall))
+
+    def regions(mask):
+        labels, n = ndimage.label(mask, structure=np.ones((3, 3)))
+        sizes = ndimage.sum(np.ones(mask.shape), labels, index=np.arange(1, n + 1)) if n else []
+        edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])).tolist())
+        return labels, sizes, edge
+
+    # specks of picture left in the backdrop go
+    labels, sizes, _ = regions(alpha > 0.5)
+    alpha = np.where(np.isin(labels, [i + 1 for i, a in enumerate(sizes) if a < island * h * w]), 0, alpha)
+    # backdrop is what reaches the edge, or a real gap (as much the backdrop's color as the wall is).
+    # An enclosed patch that is small, or that leans to the key color less than the wall does (a
+    # reflection in an eye, clothes or skin tinted by the backdrop's light), is part of the picture
+    labels, sizes, edge = regions(alpha < 0.5)
+    ids = [i + 1 for i in range(len(sizes)) if (i + 1) not in edge]
+    typical_in = dict(zip(ids, ndimage.median(share, labels, index=ids))) if ids else {}
+    keep = [i for i in ids if sizes[i - 1] < hole * h * w or typical_in[i] < 0.85 * typical]
+    alpha = np.where(np.isin(labels, keep), 1.0, alpha)
+    clear = alpha < 0.5
+    alpha = np.where(clear, 0.0, alpha)
+
+    # along the cut: how much of a pixel is backdrop (how far it leans against the backdrop beside it),
+    # and the backdrop's share taken out of its color
+    zone = (ndimage.distance_transform_edt(~clear) <= reach) & ~clear
+    weight = clear.astype(np.float64)[..., None]
+    beside = ndimage.gaussian_filter(rgb * weight, (4, 4, 0)) / np.maximum(ndimage.gaussian_filter(weight, (4, 4, 0)), 1e-3)
+    nearest = ndimage.distance_transform_edt(~clear, return_distances=False, return_indices=True)
+    k = beside[nearest[0], nearest[1]]
+    k_wide = (k[..., 1] - (k[..., 0] + k[..., 2]) / 2) if color == 'green' else (k[..., 2] - (k[..., 0] + k[..., 1]) / 2)
+    covered = np.where(zone, np.clip((wide / np.maximum(k_wide, 30) - 0.1) / 0.9, 0, 1), 0)
+    alpha = np.where(zone, np.minimum(alpha, 1 - covered), alpha)
+    a = np.maximum(alpha, 0.05)[..., None]
+    colors = np.where(zone[..., None], (rgb - (1 - a) * k) / a, rgb)
+    # a pixel nearly all backdrop has too little of itself to unmix: the nearest solid pixel's color
+    solid = ndimage.binary_erosion(alpha > 0.9, iterations=2)
+    if solid.any():
+        solid_at = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)
+        colors = np.where((zone & (alpha < 0.4))[..., None], np.clip(colors, 0, 255)[solid_at[0], solid_at[1]], colors)
+    # the backdrop's light on what stays: all of it taken out along the cut, 60% of it elsewhere (clothes
+    # that are really navy would go dark green if it were all)
+    cr, cg, cb = colors[..., 0], colors[..., 1], colors[..., 2]
+    strength = np.where(zone, 1.0, 0.6)
+    if color == 'green':
+        colors = np.dstack([cr, cg - strength * (cg - np.minimum(cg, np.maximum(cr, cb))), cb])
+        # skin and hair lit by the wall go olive: in a warm color, green over 90% of red is the wall's
+        # light, so it is held there; a real green (green well over red) fades out of this
+        warm = cr > 1.15 * cb
+        ratio = colors[..., 1] / np.maximum(colors[..., 0], 1)
+        held = 1 - _smooth(ratio, 1.15, 1.4)
+        colors[..., 1] = np.where(warm, colors[..., 1] - held * (colors[..., 1] - np.minimum(colors[..., 1], 0.9 * cr)), colors[..., 1])
+    else:
+        colors = np.dstack([cr, cg, cb - strength * (cb - np.minimum(cb, np.maximum(cr, cg)))])
+        # the same for blue: in a warm color, blue over 80% of red is the wall's light
+        warm = (cr > cg) & (cr > 1.1 * np.minimum(cg, cb))
+        ratio = colors[..., 2] / np.maximum(colors[..., 0], 1)
+        held = 1 - _smooth(ratio, 1.2, 1.5)
+        colors[..., 2] = np.where(warm, colors[..., 2] - held * (colors[..., 2] - np.minimum(colors[..., 2], 0.8 * cr)), colors[..., 2])
+    Image.fromarray(np.dstack([np.clip(colors, 0, 255), alpha * 255]).round().astype(np.uint8)).save(out)
+    return {'size': [w, h], 'clear': round(float((alpha < 0.02).mean()), 4), 'partly': round(float(((alpha >= 0.02) & (alpha <= 0.98)).mean()), 4)}
 
 
 def pack(manifest, out):

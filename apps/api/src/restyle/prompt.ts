@@ -11,16 +11,22 @@ const TYPE_WORDS: Record<RestyleOptions['type'], (subject: string) => string> = 
   render3d: (s) => `A 3D rendered illustration of ${s}. Sculpted three-dimensional forms, physically based materials, soft global illumination, gentle studio lighting and soft shading, a high quality 3D render.`,
 };
 
-// Always drawn on white: redrawn from a picture on white, FLUX keeps its white ground whatever
-// the prompt says. A black ground is the white one cut away and filled (job.ts). When the ground
-// is to be cleared, it is asked for bare: a studio wall, a floor or a cast shadow would be left in
-// the cutout.
+// Drawn on white: redrawn from a picture on white, FLUX keeps its white ground whatever the prompt
+// says. A black ground is the white one cut away and filled (job.ts). When the ground is to be
+// cleared, it is asked for bare: a studio wall, a floor or a cast shadow would be left in the cutout.
+// A picture of something (a character, an object) with no background-removal model to cut it out is
+// drawn on a flat key color instead, which job.ts starts it on too, and cuts it out by: FLUX draws
+// that backdrop with a gradient and a floor, and light bouncing off it onto the subject, which the
+// words ask it not to and the cutout copes with.
+export type KeyColor = 'green' | 'blue';
+export const KEY_HEX: Record<KeyColor, string> = { green: '#00ff00', blue: '#0000ff' };
+const KEYED = (color: KeyColor) => `Isolated on a solid flat pure bright ${color} (${KEY_HEX[color].toUpperCase()}) background, one uniform color from edge to edge, with no gradient, no floor, no wall and no cast shadow. The subject floats in empty space with nothing beneath it, and is lit by neutral white light with no ${color} reflected on it.`;
 const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 // Draw it whole (closeness `whole`): a subject the original cuts off is drawn complete.
 const WHOLE = 'The whole subject is shown complete and uncropped, as a new composition: nothing is cut off by the edge of the picture (a character has its whole head and hair), centered with empty space around it.';
 
-export function restylePrompt(o: RestyleOptions, subject: string) {
+export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor) {
   // a phrase the model wrote starts with a capital; inside the sentence it should not
   const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
   const parts = [TYPE_WORDS[o.type](what)];
@@ -35,7 +41,7 @@ export function restylePrompt(o: RestyleOptions, subject: string) {
     parts.push(`${name} themed, with ${name} motifs and ornament.`);
   }
   if (o.notes) parts.push(o.notes.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.'));
-  parts.push(o.background === 'white' ? BACKGROUND : BARE_BACKGROUND);
+  parts.push(o.background === 'white' ? BACKGROUND : key ? KEYED(key) : BARE_BACKGROUND);
   return parts.join(' ');
 }
 

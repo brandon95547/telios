@@ -33,6 +33,15 @@ test('each output type asks for its own look, with the style, theme and backgrou
   assert.match(restylePrompt(DEFAULT_OPTIONS, 'A symmetrical ornament'), /clip art of a symmetrical ornament/);
 });
 
+test('a picture to be cut out by color is asked for on a flat key color, lit neutrally', () => {
+  const o = { ...DEFAULT_OPTIONS, type: 'illustration' as const, background: 'transparent' as const };
+  const green = restylePrompt(o, 'a girl', 'green');
+  assert.match(green, /Isolated on a solid flat pure bright green \(#00FF00\) background, one uniform color from edge to edge, with no gradient, no floor, no wall and no cast shadow\. The subject floats in empty space with nothing beneath it, and is lit by neutral white light with no green reflected on it\.$/);
+  assert.match(restylePrompt(o, 'a girl', 'blue'), /bright blue \(#0000FF\) background.*no blue reflected on it\.$/);
+  assert.match(restylePrompt({ ...o, background: 'white' }, 'a girl', 'green'), /plain pure white background\.$/);   // a white ground needs no key
+  assert.match(restylePrompt(o, 'a girl'), /with no floor, no wall and no cast shadow\.$/);                            // no key: the plain bare ground
+});
+
 test('a medium is for 2D illustrations only, and a style must suit the type', () => {
   assert.equal(cleanOptions({ type: 'clipart', style: 'tonalism' }).style, '');
   assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism' }).style, 'tonalism');

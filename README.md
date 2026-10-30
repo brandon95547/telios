@@ -51,10 +51,11 @@ ComfyUI is only lent the work. Where it runs is one setting in `.env`:
   It wants an NVIDIA GPU; a Mac draws with Metal, slowly.
 
 The header says whether ComfyUI is ready. With a background removal model (BiRefNet), 2D and 3D
-illustrations are cut out of their background; without one, a plain background is made clear by
-color. With an upscaling model (4x-UltraSharp), Enhance details enlarges with detail. On an
-NVIDIA A4000 a picture takes about 30 seconds, and the first after a pause about a minute more
-(the models are loaded again).
+illustrations are cut out of their background; without one, they are drawn on a flat green backdrop
+(blue if the picture has greens of its own) and cut out by color, and a plain background is made clear
+by color for clip art and line art. With an upscaling model (4x-UltraSharp), Enhance details
+enlarges with detail. On an NVIDIA A4000 a picture takes about 30 seconds, and the first after a
+pause about a minute more (the models are loaded again).
 
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,

@@ -137,7 +137,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
           <div className="label">Background</div>
           <Seg label="Background" value={options.background} onChange={(v) => set('background', v)} options={[{ value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }]} />
           {options.background !== 'white' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
-            <div className="sub warn">ComfyUI here has no background-removal model yet, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on white.</div>
+            <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
         </div>
         <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}

@@ -11,12 +11,14 @@ import { CLOSENESS, WHOLE_PAD, findStyle, qualityOf, typeInfo, wantsStyleReferen
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { restylePrompt, subjectFromName } from './prompt.ts';
+import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject, readWholeSubject } from './subject.ts';
 import { getInput, rel, resultDir, updateInput, updateResult } from './store.ts';
 
 export const MAX_SIDE = 8192;
+/** The least a key-color cutout must clear of the picture to count as having found a backdrop. */
+const MIN_CLEAR = 0.05;
 
 /** The size a result is kept at, from the size it was drawn at. */
 export function targetSize(size: RestyleResult['options']['size'], drawn: [number, number], original?: [number, number]): [number, number] {
@@ -77,7 +79,12 @@ export async function drawResult(id: string, signal: AbortSignal) {
         if (input) updateInput(input.id, (i) => { if (whole) i.subjectWhole = read; else i.subject = read; });
       }
     }
-    const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName));
+    // a picture of something (a character, an object) is cut out of its ground by a model; without one
+    // it is drawn on a flat key color, green (blue if the picture has greens), and cut out by color
+    const clearing = o.background !== 'white';
+    const byColor = clearing && (o.type === 'illustration' || o.type === 'render3d') && !info.backgroundRemoval;
+    const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
+    const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined);
     const quality = qualityOf(o);
     // drawn whole, the picture is set in white space: a head the picture cuts off has room to be
     // finished, and what is drawn is not held to the picture's own edge
@@ -90,8 +97,14 @@ export async function drawResult(id: string, signal: AbortSignal) {
     stage('Drawing');
     // a scan's gray or yellowed paper, made white first: redrawn, it would stay gray
     await python(['whiten', path.join(dir, 'source.png'), path.join(scratch, 'white.png')]);
-    let framed = sharp(path.join(scratch, 'white.png'));
-    if (pad) framed = framed.extend({ top: pad, bottom: pad, left: pad, right: pad, background: '#ffffff' });
+    let ground = path.join(scratch, 'white.png');
+    if (key) {
+      // FLUX keeps the ground it is given, so the picture starts on the key color, not on white
+      ground = path.join(scratch, 'ground.png');
+      await python(['ground', path.join(scratch, 'white.png'), ground, '--color', KEY_HEX[key]]);
+    }
+    let framed = sharp(ground);
+    if (pad) framed = framed.extend({ top: pad, bottom: pad, left: pad, right: pad, background: key ? KEY_HEX[key] : '#ffffff' });
     const start = await framed.resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
 
@@ -110,16 +123,18 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
 
-    // a picture of something (a character, an object) needs a model to be cut out of its ground;
-    // by color it comes out speckled and hazed. Without that model it is kept on white, and says so.
-    const needsModel = (o.type === 'illustration' || o.type === 'render3d') && !info.backgroundRemoval;
-    if (needsModel && o.background !== 'white') {
-      warnings.push(`Drawn on white: this server's ComfyUI has no background-removal model, so the ${o.background === 'black' ? 'black' : 'transparent'} background was not made.`);
-    } else if (o.background !== 'white') {
+    if (clearing) {
       stage('Clearing the background');
+      let cleared = true;
       if (info.backgroundRemoval && (o.type === 'illustration' || o.type === 'render3d')) {
         const mask = await comfy().run(cutoutWorkflow(info.backgroundRemoval), { 'picture.png': png }, signal);
         png = await withMask(png, mask);
+      } else if (key) {
+        fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
+        const cut = await python(['chroma', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), '--color', key]);
+        cleared = cut.clear >= MIN_CLEAR;
+        if (cleared) png = fs.readFileSync(path.join(scratch, 'clear.png'));
+        else warnings.push(`The background was not cleared: the picture came out without a plain ${key} backdrop to cut it from.`);
       } else {
         fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
         // a frame's opening is cut out too (the window rule); a character or an object has none
@@ -127,9 +142,11 @@ export async function drawResult(id: string, signal: AbortSignal) {
         await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), ...(o.type === 'lineart' ? ['--everything'] : []), ...(isFrame && !whole ? [] : ['--no-window'])]);
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
       }
-      // drawn whole on a clear ground, it is cut to what is drawn, with a small margin
-      if (whole && o.background === 'transparent') png = await trimToContent(png);
-      if (o.background === 'black') png = await sharp(png).flatten({ background: '#000000' }).png().toBuffer();
+      if (cleared) {
+        // drawn whole on a clear ground, it is cut to what is drawn, with a small margin
+        if (whole && o.background === 'transparent') png = await trimToContent(png);
+        if (o.background === 'black') png = await sharp(png).flatten({ background: '#000000' }).png().toBuffer();
+      }
     }
 
     // what is kept is as large as it was drawn (or trimmed to): its size, not the drawn canvas's

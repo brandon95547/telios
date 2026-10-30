@@ -10,6 +10,9 @@
   raster    <picture> <out.png>                                 any picture Pillow reads, as PNG
   whiten    <in.png> <out.png>                                  a scan's paper made white
   key       <in.png> <out.png> [--ground white|black] [--everything]   a plain background made clear
+  pickkey   <in.png>                                            the key color (green or blue) a picture can be cut out of
+  ground    <in.png> <out.png> [--color #00ff00]                a picture's white ground painted in a key color
+  chroma    <in.png> <out.png> [--color green|blue]             a picture on a key-color backdrop cut out of it
   pack      <manifest.json> <out.zip>                           files packed into a zip
 """
 import argparse
@@ -104,6 +107,16 @@ def main(argv=None):
     k.add_argument('--ground', default='white', choices=['white', 'black'])
     k.add_argument('--everything', action='store_true')
     k.add_argument('--no-window', action='store_true', help='no enclosed patch is cleared: a character, not a frame')
+    pc = sub.add_parser('pickkey')
+    pc.add_argument('source')
+    gr = sub.add_parser('ground')
+    gr.add_argument('source')
+    gr.add_argument('out')
+    gr.add_argument('--color', default='#00ff00')
+    ch = sub.add_parser('chroma')
+    ch.add_argument('source')
+    ch.add_argument('out')
+    ch.add_argument('--color', default='green', choices=['green', 'blue'])
     pk = sub.add_parser('pack')
     pk.add_argument('manifest')
     pk.add_argument('out')
@@ -131,7 +144,7 @@ def main(argv=None):
             os.makedirs(args.outdir, exist_ok=True)
             analysis = json.load(open(args.analysis)) if args.analysis else None
             out(rebuild(args.source, args.outdir, json.loads(args.reading), analysis, args.title))
-        elif args.cmd in ('unzip', 'eps', 'raster', 'whiten', 'key', 'pack'):
+        elif args.cmd in ('unzip', 'eps', 'raster', 'whiten', 'key', 'pickkey', 'ground', 'chroma', 'pack'):
             from . import restyle
             if args.cmd == 'unzip':
                 os.makedirs(args.outdir, exist_ok=True)
@@ -144,6 +157,12 @@ def main(argv=None):
                 out(restyle.whiten(args.source, args.out))
             elif args.cmd == 'key':
                 out(restyle.key(args.source, args.out, args.ground, args.everything, window=2.0 if args.no_window else 0.04))
+            elif args.cmd == 'pickkey':
+                out(restyle.pick_key(args.source))
+            elif args.cmd == 'ground':
+                out(restyle.ground(args.source, args.out, args.color))
+            elif args.cmd == 'chroma':
+                out(restyle.chroma(args.source, args.out, args.color))
             else:
                 out(restyle.pack(json.load(open(args.manifest)), args.out))
     except Exception as e:  # reported to the job worker, which shows it
