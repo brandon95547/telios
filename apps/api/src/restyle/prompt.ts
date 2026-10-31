@@ -27,11 +27,12 @@ const KEYED = (color: KeyColor) => `Isolated on a solid flat pure bright ${color
 const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
-export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor) {
+/** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. */
+export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor, lead?: string) {
   if (o.type === 'vector') throw new Error('A flat SVG is drawn by the model, not by ComfyUI: it has no prompt.');
   // a phrase the model wrote starts with a capital; inside the sentence it should not
   const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
-  const parts = [TYPE_WORDS[o.type](what)];
+  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : TYPE_WORDS[o.type](what)];
   const style = findStyle(o.style);
   if (style) parts.push(`In this style: ${style.words}.`);
   const medium = o.type === 'illustration' ? findMedium(o.medium) : null;

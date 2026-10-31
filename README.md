@@ -66,6 +66,20 @@ color, and a plain background is made clear by color for clip art and line art. 
 model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 a picture takes about
 30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
+**Draw it whole** (a switch for 2D and 3D illustrations, instead of Complete the figure) redraws a figure
+shown in part (a bust, a half figure) as the whole figure, standing, head to feet: the model reads the
+picture and writes one sentence describing the figure full-length (what it is and is made of, its
+headdress, which way it faces, its clothes and colors, how it ends: a statue on a low base, a living
+figure on the ground), and that sentence is the redraw's prompt, on a taller 2:3 canvas, drawn from
+nothing (denoise 1; Follow the original does not apply). Nothing is added to the picture: no cutout of a
+base, no inpaint, a single draw. It is a new figure inspired by the picture (its headdress, clothes and
+colors, not its face), which is the point. Tried at small sizes on a close-up of a pharaoh, the usual
+wording ("a variation of the referenced image", even "as a full-length figure") gave a cartoon boy at 0.85
+and a blank mannequin at 0.95, while a prompt that describes the whole figure gave a standing statue; but
+only from nothing: started from the picture cut out and cropped into the tall canvas, 0.85 and 0.9 stayed
+close-ups, because a face fills the frame. Some small draws came out as two figures, so draw a few
+versions. It needs the model.
+
 **Complete the figure** (a switch for 2D and 3D illustrations) is for a picture cut off at the bottom,
 a bust whose body is missing. It acts only on a figure that is cut off: the subject is cut out first,
 and one that does not reach the picture's bottom edge (a hall, a landscape, a figure with its feet in

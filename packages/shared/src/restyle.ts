@@ -76,6 +76,14 @@ export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
  * legs, so there is no more than this. */
 export const COMPLETE_SHARE = 0.57;
 
+/** Draw it whole: a figure shown in part is redrawn as the whole figure, from a sentence the model writes
+ * about it full-length, on a taller canvas (2:3). The redraw starts from nothing (denoise 1): from the picture
+ * (a close-up of a face cropped into a tall canvas) it would keep the close-up, at 0.75 and at 0.85 and 0.9
+ * alike, as only 1.0 gave a standing figure (tried on a pharaoh's bust and an anime pharaoh's). The picture is
+ * only read by the model, and the figure is a new one inspired by it. */
+export const WHOLE_DENOISE = 1;
+export const WHOLE_ASPECT = 2 / 3;
+
 /** How much of a figure a picture shows, as the model reads it. */
 export const SHOWN = ['head', 'chest', 'waist', 'thighs', 'whole'] as const;
 export type Shown = (typeof SHOWN)[number];
@@ -137,13 +145,15 @@ export interface RestyleOptions {
   notes: string;
   /** Draw the part of the picture that is cut off below (COMPLETE_SHARE), for 2D and 3D illustrations. */
   complete: boolean;
+  /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for 2D and 3D illustrations. */
+  whole: boolean;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
   madeFor: Target;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false, madeFor: 'auto',
+  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false, whole: false, madeFor: 'auto',
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -195,6 +205,8 @@ export interface DrawSettings {
   /** Complete the figure: the share of the height drawn below, what that part was asked for (`prompt`),
    * and whether the model or a plain template described it. */
   completed?: { share: number; prompt: string; described: 'model' | 'template'; shown?: Shown };
+  /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
+  whole?: { prompt: string };
   /** The upscaling model that enlarged it, when one did. */
   enlargedWith?: string;
 }
@@ -301,7 +313,8 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.enhance = raw?.enhance === true;
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
-  o.complete = PICTURE_LED_TYPES.includes(o.type) && raw?.complete === true;
+  o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
+  o.complete = PICTURE_LED_TYPES.includes(o.type) && raw?.complete === true && !o.whole;   // one or the other
   o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto') : 'auto';
   return o;
 }
@@ -345,6 +358,10 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
+  if (s?.whole) {
+    rows.push({ label: 'Draw it whole', value: 'the whole figure, described by the model and drawn from that sentence alone on a taller canvas (Follow the original does not apply)' });
+    rows.push({ label: 'Figure asked for', value: s.whole.prompt });
+  }
   if (s?.completed) {
     const { shown, share } = s.completed;
     const added = isBust(shown) ? `finished as a bust on a base (${Math.round(share * 100)}% of the height added)` : `${Math.round(share * 100)}% of the height drawn below`;

@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, COMPLETE_SHARES, PICTURE_LED_TYPES, findStyle, isBust, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, COMPLETE_SHARES, PICTURE_LED_TYPES, WHOLE_ASPECT, WHOLE_DENOISE, findStyle, isBust, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, inpaintWorkflow, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
@@ -15,6 +16,7 @@ import { BASE_DENOISE, CUT_OFF_SHARE, INPAINT_STEPS, baseMask, basePrompt, baseS
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
+import { readWholeFigure } from './whole.ts';
 import { stagesOf } from './progress.ts';
 import { getInput, rel, resultDir, updateInput, updateResult } from './store.ts';
 
@@ -37,6 +39,15 @@ export function sizesFor(picture: [number, number], share: number, o: Pick<Resty
   const height = picture[1] + (share > 0 ? growthOf(picture[1], share) : 0);
   const [w, h] = drawSize(picture[0] / height, qualityOf(o).size);
   const [tw, th] = targetSize(o.size, [w, h], original && share > 0 ? [original[0], Math.round((original[1] * height) / picture[1])] : original);
+  return { w, h, tw, th };
+}
+
+/** The sizes a whole figure (Draw it whole) is drawn and kept at: a 2:3 canvas, whatever shape the picture was; "original"
+ * keeps the longer side of the picture it came from. */
+export function wholeSizes(o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
+  const [w, h] = drawSize(WHOLE_ASPECT, qualityOf(o).size);
+  const long = original ? Math.max(...original) : 0;
+  const [tw, th] = o.size === 'original' && long ? targetSize('drawn', [Math.round((w * long) / h), long]) : targetSize(o.size, [w, h]);
   return { w, h, tw, th };
 }
 
@@ -106,7 +117,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (!info.inpaint) throw new Error('This ComfyUI cannot inpaint, which Complete the figure needs: its Phansora API has to allow InpaintModelConditioning, DifferentialDiffusion and ImageToMask.');
       if (!byModel) throw new Error('Complete the figure needs the background-removal model, to cut the subject out before the missing part is drawn.');
     }
-    let { w, h, tw, th } = sizesFor([meta.width!, meta.height!], o.complete ? COMPLETE_SHARE : 0, o, input?.originalSize);
+    if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
+    let { w, h, tw, th } = o.whole ? wholeSizes(o, input?.originalSize) : sizesFor([meta.width!, meta.height!], o.complete ? COMPLETE_SHARE : 0, o, input?.originalSize);
     const clearing = o.background !== 'white' || byModel;
     const byColor = clearing && pictureLed && !removal;
     let enlarges = tw > w && o.enhance && info.upscalers.length > 0;
@@ -114,7 +126,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const stage = stagesOf(id, [
       ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
       { label: 'Preparing the picture', seconds: 2 },
-      ...(byModel ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
+      ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
+      ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
       ...(o.complete ? [{ label: 'Describing the missing part', seconds: 4 }, { label: 'Drawing the missing part', seconds: 90 }] : []),
       { label: 'Drawing', seconds: 28 },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
@@ -133,7 +146,15 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     stage('Preparing the picture');
     const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
-    const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined);
+    // Draw it whole: the model describes the figure full-length, and that is the prompt (a prompt that only says
+    // "a variation of the picture" cannot make a body from a head and a chest)
+    let lead: string | undefined;
+    if (o.whole) {
+      stage('Describing the whole figure');
+      lead = (await readWholeFigure(source, signal)) ?? undefined;
+      if (!lead) throw new Error('Draw it whole needs the model to describe the figure, and it could not: try again.');
+    }
+    const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined, lead);
     const warnings: string[] = [];
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
@@ -150,7 +171,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let startCutout = false;
     let cutOff = 0;   // the share of the picture's width over which the subject reaches its bottom edge
     let cutMask: Buffer | undefined;   // the model's mask of the subject
-    if (byModel) {
+    // (a whole figure is drawn from nothing, so the picture it starts from is not cut out)
+    if (byModel && !o.whole) {
       stage('Cutting the subject out');
       const whitened = fs.readFileSync(ground);
       const mask = await comfy().run(cutoutWorkflow(removal!), { 'picture.png': whitened }, signal);
@@ -208,7 +230,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
-    const denoise = CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
+    const denoise = o.whole ? WHOLE_DENOISE : CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
     // takes the picture's look, not its subject); without the picture, or the files USO needs, it is
@@ -230,6 +252,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
       ...(completed && { completed }),
+      ...(o.whole && { whole: { prompt } }),
     };
     updateResult(id, (x) => { x.settings = settings; });
     let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
