@@ -67,7 +67,7 @@ export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number
  * InpaintModelConditioning and DifferentialDiffusion are how Dev (not the Fill model) inpaints; the
  * pictures must be the same size, a multiple of 16 on each side. The rest of the picture comes back
  * a little changed by the VAE, so the caller lays the original back over it (complete.ts layBack). */
-export function inpaintWorkflow(f: FluxFiles, o: { prompt: string; steps: number; seed: number }): Workflow {
+export function inpaintWorkflow(f: FluxFiles, o: { prompt: string; steps: number; seed: number; denoise?: number }): Workflow {
   const gguf = f.unet.endsWith('.gguf');
   return {
     '1': gguf ? { class_type: 'UnetLoaderGGUF', inputs: { unet_name: f.unet } } : { class_type: 'UNETLoader', inputs: { unet_name: f.unet, weight_dtype: 'default' } },
@@ -81,7 +81,7 @@ export function inpaintWorkflow(f: FluxFiles, o: { prompt: string; steps: number
     '22': { class_type: 'ImageToMask', inputs: { image: ['21', 0], channel: 'red' } },
     '24': { class_type: 'InpaintModelConditioning', inputs: { positive: ['5', 0], negative: ['6', 0], vae: ['3', 0], pixels: ['20', 0], mask: ['22', 0], noise_mask: true } },
     '25': { class_type: 'DifferentialDiffusion', inputs: { model: ['1', 0] } },
-    '8': { class_type: 'KSampler', inputs: { model: ['25', 0], positive: ['24', 0], negative: ['24', 1], latent_image: ['24', 2], seed: o.seed, steps: o.steps, cfg: 1, sampler_name: f.sampler, scheduler: f.scheduler, denoise: 1 } },
+    '8': { class_type: 'KSampler', inputs: { model: ['25', 0], positive: ['24', 0], negative: ['24', 1], latent_image: ['24', 2], seed: o.seed, steps: o.steps, cfg: 1, sampler_name: f.sampler, scheduler: f.scheduler, denoise: o.denoise ?? 1 } },
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: 'telios-inpaint' } },
   };

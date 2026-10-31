@@ -11,7 +11,7 @@ import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, COMPLETE_SHARES, PICTURE_LED
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, inpaintWorkflow, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { CUT_OFF_SHARE, INPAINT_STEPS, basePrompt, bottomContact, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
+import { BASE_DENOISE, CUT_OFF_SHARE, INPAINT_STEPS, baseMask, basePrompt, baseStart, bottomContact, bottomSpan, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
@@ -149,6 +149,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let startPicture: string | Buffer = ground;
     let startCutout = false;
     let cutOff = 0;   // the share of the picture's width over which the subject reaches its bottom edge
+    let cutMask: Buffer | undefined;   // the model's mask of the subject
     if (byModel) {
       stage('Cutting the subject out');
       const whitened = fs.readFileSync(ground);
@@ -156,7 +157,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       const on = await subjectOnWhite(whitened, mask);
       startPicture = on.png;
       startCutout = on.cut;
-      if (o.complete && on.cut) cutOff = await bottomContact(mask);
+      if (o.complete && on.cut) { cutMask = mask; cutOff = await bottomContact(mask); }
     }
     // the missing part, drawn by an inpaint from a description of it, and the picture's own pixels laid back
     let completed: DrawSettings['completed'];
@@ -188,9 +189,19 @@ export async function drawResult(id: string, signal: AbortSignal) {
           resize(share);
           const missing = bust ? basePrompt(o.notes) : lowerHalfPrompt(read?.sentence ?? null, o.notes);
           stage('Drawing the missing part');
-          const canvas = await extendCanvas(subjectOnly, [w, h], share);
-          const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed }), { 'picture.png': canvas.picture, 'mask.png': canvas.mask }, signal);
-          startPicture = await layBack(drawn, canvas.picture, canvas.mask, [w, h]);
+          let canvas = await extendCanvas(subjectOnly, [w, h], share);
+          let area = canvas.mask;
+          let denoise: number | undefined;
+          // a bust is given a plain slab under it and only the base's shape to redraw: told only to draw a base, FLUX drew a
+          // reflection or a floor under it three times in four
+          const span = bust && cutMask ? await bottomSpan(cutMask) : null;
+          if (span && cutMask) {
+            canvas = { picture: await baseStart(subjectOnly, cutMask, span, [w, h], share), mask: canvas.mask };
+            area = await baseMask(span, picture, [w, h], share);
+            denoise = BASE_DENOISE;
+          }
+          const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed, denoise }), { 'picture.png': canvas.picture, 'mask.png': area }, signal);
+          startPicture = await layBack(drawn, canvas.picture, area, [w, h]);
           completed = { share, prompt: missing, described: !bust && read?.sentence ? 'model' : 'template', ...(read?.shown && { shown: read.shown }) };
         }
       }

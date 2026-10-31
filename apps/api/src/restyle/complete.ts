@@ -14,6 +14,9 @@ import { forModel } from '../engine/render.ts';
 export const INPAINT_STEPS = 28;
 /** How far into the picture the mask fades, as a share of its height (48 pixels of a 700 pixel bust). */
 const RAMP_SHARE = 0.07;
+/** Where a bust's base begins, as a share of the new height, and how much wider than the bust it is. */
+const BASE_AT = 0.25;
+const BASE_WIDER = 1.12;
 
 /** The height a picture of this height is given below. */
 export const growthOf = (height: number, share = COMPLETE_SHARE) => Math.round(height * share);
@@ -33,6 +36,66 @@ export async function bottomContact(mask: Buffer): Promise<number> {
     for (let y = info.height - band; y < info.height; y++) if (data[y * info.width + x] > 127) { columns++; break; }
   }
   return columns / info.width;
+}
+
+/** Where the subject meets the bottom edge: its first and last column, as shares of the picture's width; null if it does not. */
+export async function bottomSpan(mask: Buffer): Promise<[number, number] | null> {
+  const { data, info } = await sharp(mask).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const band = Math.max(2, Math.round(info.height * BOTTOM_BAND));
+  let first = info.width, last = -1;
+  for (let y = info.height - band; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[y * info.width + x] > 127) { first = Math.min(first, x); last = Math.max(last, x); }
+  return last < 0 ? null : [first / info.width, (last + 1) / info.width];
+}
+
+/** How far a bust's base is redrawn from the slab it starts as (1 would forget the slab): with the slab FLUX draws a
+ * base every time, and without it drew a reflection and a floor three times in four. */
+export const BASE_DENOISE = 0.85;
+
+/** The canvas of a bust with its base already on it, as a plain slab in the bust's own color, shaded top to bottom:
+ * the start of the inpaint, which turns it into stone (or whatever the bust is made of). `subject` is the bust cut
+ * out on white, `mask` the model's mask of it, `span` where it meets the bottom edge (bottomSpan). */
+export async function baseStart(subject: Buffer, mask: Buffer, span: [number, number], size: [number, number], share: number): Promise<Buffer> {
+  const { width: W0, height: H0 } = await sharp(subject).metadata();
+  const [w, h] = size;
+  const rgb = await sharp(subject).removeAlpha().raw().toBuffer();
+  const m = await sharp(mask).greyscale().resize(W0, H0).raw().toBuffer();
+  let n = 0;
+  const sum = [0, 0, 0];
+  for (let y = Math.round(H0! * 0.93); y < H0!; y++) for (let x = 0; x < W0!; x++) if (m[y * W0! + x] > 127) { n++; for (let c = 0; c < 3; c++) sum[c] += rgb[(y * W0! + x) * 3 + c]; }
+  const mean = n ? sum.map((v) => v / n) : [110, 110, 110];
+  const shade = (k: number) => `rgb(${mean.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',')})`;
+  const Hn = growthOf(H0!, share), H = H0! + Hn;
+  const sx = w / W0!, sy = h / H;
+  const cx = ((span[0] + span[1]) / 2) * W0!, half = ((span[1] - span[0]) / 2) * W0! * BASE_WIDER;
+  const x0 = Math.max(0, cx - half) * sx, x1 = Math.min(W0!, cx + half) * sx;
+  const y0 = (H0! - 2) * sy, y1 = (H0! + Hn * 0.94) * sy;
+  const slab = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(1.25)}"/><stop offset="0.15" stop-color="${shade(1)}"/><stop offset="1" stop-color="${shade(0.7)}"/></linearGradient></defs><rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y0).toFixed(1)}" fill="url(#g)"/></svg>`;
+  const { picture } = await extendCanvas(subject, size, share);
+  return sharp(picture).composite([{ input: Buffer.from(slab) }]).png().toBuffer();
+}
+
+/** A bust's base, as the only part of the new area to be drawn: the bust's own width for a short way (its flat
+ * cut finished), then a low base a little wider than it, to the bottom of the canvas. Left to itself, FLUX draws a
+ * reflection or a floor under a bust and no base; given only this shape it has to draw one. `span` is where the
+ * bust meets the bottom edge (bottomSpan), `picture` its size, `size` the canvas it is drawn on. */
+export async function baseMask(span: [number, number], picture: [number, number], size: [number, number], share: number): Promise<Buffer> {
+  const [W0, H0] = picture, [w, h] = size;
+  const Hn = growthOf(H0, share), H = H0 + Hn;
+  const sx = w / W0, sy = h / H;
+  const cx = ((span[0] + span[1]) / 2) * W0, half = ((span[1] - span[0]) / 2) * W0;
+  const edge = (k: number) => [Math.max(0, cx - half * k), Math.min(W0, cx + half * k)];
+  const ramp = Math.max(8, Math.round(H0 * RAMP_SHARE));
+  const profile: [number, number][] = [[H0 - ramp, 1], [H0 + Hn * BASE_AT, 1], [H0 + Hn * BASE_AT + 1, BASE_WIDER], [H, BASE_WIDER]];
+  const points = [...profile.map(([y, k]) => [edge(k)[0], y]), ...[...profile].reverse().map(([y, k]) => [edge(k)[1], y])];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="black"/><polygon fill="white" points="${points.map(([x, y]) => `${(x * sx).toFixed(1)},${(y * sy).toFixed(1)}`).join(' ')}"/></svg>`;
+  const raw = await sharp(Buffer.from(svg)).greyscale().blur(2.5).raw().toBuffer();
+  // soft into the picture over its last rows, as the whole new area's mask is
+  for (let y = 0; y < h; y++) {
+    const at = y / sy;
+    const f = at >= H0 ? 1 : at >= H0 - ramp ? (at - (H0 - ramp)) / ramp : 0;
+    if (f < 1) for (let x = 0; x < w; x++) raw[y * w + x] = Math.round(raw[y * w + x] * f);
+  }
+  return sharp(raw, { raw: { width: w, height: h, channels: 1 } }).png().toBuffer();
 }
 
 /** The picture at the top of a taller white canvas, and the mask of what is to be drawn (white: the new
@@ -79,10 +142,10 @@ export function lowerHalfPrompt(described: string | null, notes: string) {
   return [...parts, ...TAIL].join(' ');
 }
 
-/** What the inpaint is asked for a head or a chest: not a body drawn from so little, but the bust's clean
- * flat cut resting on a low base of the same material. */
+/** What the inpaint is asked for a head or a chest: not a body drawn from so little, but a low base of the same
+ * material for the bust's clean flat cut to rest on (drawn in the base's own shape, baseMask). */
 export function basePrompt(notes: string) {
-  const parts = ["A low, plain rectangular base of the same material and color as the bust, as wide as the bust's flat bottom edge, directly under it, joined to it in a clean flat horizontal line; the bust ends there and nothing continues below it."];
+  const parts = ['A low, plain rectangular base of the same material and color as the bust, wider than the bust and directly under it, with a clean flat top that the bust rests on and a flat front.'];
   if (notes.trim()) parts.push(sentence(notes));
   return [...parts, ...TAIL].join(' ');
 }

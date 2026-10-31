@@ -73,7 +73,9 @@ the picture) is drawn as it is, with a note on its tile, as is a picture the mod
 whole figure. How much is added depends on how much the model says is shown (it answers *head*,
 *chest*, *waist*, *thighs* or *whole*, and writes a sentence about what continues below): a head or a
 chest is too little to draw a body from, so it is finished as a **bust on a low base** (18% of the
-height, drawn from a plain sentence about the base); a waist or thighs is drawn on down to the feet
+height; a plain slab in the bust's own colour is put under it and redrawn as the base, 85% of the way,
+in the base's shape only: told only to draw a base, FLUX drew a reflection or a floor three times in
+four, and with the slab it drew one every time); a waist or thighs is drawn on down to the feet
 (65% or 40%; 100% drew a statue on long legs). FLUX.1 Dev draws only that new area (an inpaint: a soft
 mask, through InpaintModelConditioning and DifferentialDiffusion) from the sentence, with your extra
 words added ("ending in carved feet on a low base"); the picture's own pixels are then laid back over

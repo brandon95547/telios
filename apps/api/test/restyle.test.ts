@@ -74,6 +74,7 @@ test('the workflows keep to the nodes the gateway runs', () => {
   assert.deepEqual(inpaint['8'].inputs.model, ['25', 0]);
   assert.deepEqual([inpaint['8'].inputs.positive, inpaint['8'].inputs.negative, inpaint['8'].inputs.latent_image], [['24', 0], ['24', 1], ['24', 2]]);
   assert.equal(inpaint['8'].inputs.denoise, 1);
+  assert.equal(inpaintWorkflow(FLUX, { prompt: 'p', steps: 28, seed: 7, denoise: 0.85 })['8'].inputs.denoise, 0.85, 'a start picture (a bust\'s slab) is redrawn only part of the way');
   assert.equal(w['1'].class_type, 'UnetLoaderGGUF');
   assert.deepEqual(w['8'].inputs.model, ['12', 0]);   // through EasyCache
   assert.equal(w['8'].inputs.denoise, 0.75);

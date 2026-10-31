@@ -9,7 +9,7 @@ process.env.TELIOS_PROVIDER = 'none';   // no model: the plain description is us
 
 const { COMPLETE_SHARE, COMPLETE_SHARES, DEFAULT_OPTIONS, cleanOptions, isBust, settingRows } = await import('@telios/shared');
 const sharp = (await import('sharp')).default;
-const { CUT_OFF_SHARE, basePrompt, bottomContact, extendCanvas, growthOf, layBack, lowerHalfPrompt, parseReading, readLowerHalf } = await import('../src/restyle/complete.ts');
+const { BASE_DENOISE, CUT_OFF_SHARE, baseMask, basePrompt, baseStart, bottomContact, bottomSpan, extendCanvas, growthOf, layBack, lowerHalfPrompt, parseReading, readLowerHalf } = await import('../src/restyle/complete.ts');
 
 const W = 40, H0 = 100;
 /** A red subject filling a white picture, as the cut-out subject is (flat white round it). */
@@ -106,9 +106,49 @@ test('a head or a chest ends as a bust on a base, more of a figure is drawn on d
   assert.equal(isBust(null), false);
   assert.equal(growthOf(100, COMPLETE_SHARES.chest), 18);
   const bust = basePrompt('in black granite');
-  assert.match(bust, /^A low, plain rectangular base of the same material and color as the bust/);
-  assert.match(bust, /nothing continues below it\. in black granite\. Matching the upper body exactly/);
+  assert.match(bust, /^A low, plain rectangular base of the same material and color as the bust, wider than the bust/);
+  assert.match(bust, /a flat front\. in black granite\. Matching the upper body exactly/);
   assert.doesNotMatch(bust, /feet|legs|lower half/, 'no body is asked for');
+});
+
+test('a bust gets only its base to draw: the width of the cut, then a low base a little wider, and nothing at the sides', async () => {
+  // a bust 40 pixels wide at columns 30-70 of a 100 × 100 picture, given 0.18 of its height: 18 rows below it
+  const span = await bottomSpan(await maskOf(100, 100, 30, 70, 10, 100));
+  assert.deepEqual(span!.map((v) => Math.round(v * 100)), [30, 70]);
+  assert.equal(await bottomSpan(await maskOf(100, 100, 30, 70, 10, 90)), null, 'a subject that stops short of the edge has none');
+  const size: [number, number] = [100, 118];
+  const m = await baseMask(span!, [100, 100], size, 0.18);
+  const px = async (x: number, y: number) => (await sharp(m).greyscale().raw().toBuffer())[y * size[0] + x];
+  assert.equal(await px(50, 10), 0, 'the picture is not redrawn');
+  assert.equal(await px(50, 117), 255, 'the base is');
+  assert.equal(await px(50, 108), 255, 'the base is');
+  assert.equal(await px(5, 117), 0, 'nothing is drawn beyond the base');
+  assert.equal(await px(95, 112), 0, 'nothing is drawn beyond the base');
+  assert.ok(await px(29, 114) > 200, 'the base is wider than the cut (about 27.6 to 72.4, the cut being 30 to 70)');
+  assert.ok(await px(21, 114) < 10, 'and no wider (the edge is a few pixels soft)');
+  assert.equal(await px(20, 114), 0);
+  // soft into the picture over the last rows
+  const joint = await Promise.all([88, 92, 96, 99, 100].map((y) => px(50, y)));
+  assert.ok(joint[0] < joint[3] && joint[3] <= 255, `fades in: ${joint}`);
+});
+
+test('a bust starts with a slab under it in its own color, so that FLUX only has to make it stone', async () => {
+  // a bust 40 wide at columns 30-70, red, filling the rows to the bottom of a 100 × 100 picture, on white
+  const subjectPng = await sharp({ create: { width: 100, height: 100, channels: 3, background: '#ffffff' } }).composite([{ input: await sharp({ create: { width: 40, height: 90, channels: 3, background: '#aa2222' } }).png().toBuffer(), left: 30, top: 10 }]).png().toBuffer();
+  const mask = await maskOf(100, 100, 30, 70, 10, 100);
+  const span = (await bottomSpan(mask))!;
+  const size: [number, number] = [100, 118];
+  const start = await baseStart(subjectPng, mask, span, size, 0.18);
+  assert.deepEqual([(await sharp(start).metadata()).width, (await sharp(start).metadata()).height], size);
+  const { data } = await sharp(start).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const at = (x: number, y: number) => [data[(y * 100 + x) * 3], data[(y * 100 + x) * 3 + 1], data[(y * 100 + x) * 3 + 2]];
+  assert.deepEqual(at(50, 50), [170, 34, 34], 'the bust is as it was');
+  assert.deepEqual(at(5, 112), [255, 255, 255], 'white beside the slab');
+  const slab = at(50, 110);
+  assert.ok(slab[0] > slab[1] * 2 && slab[1] === slab[2], `the slab is the bust's color, darker toward the bottom: ${slab}`);
+  assert.ok(at(50, 102)[0] > at(50, 112)[0], 'shaded top to bottom');
+  assert.ok(at(29, 105)[0] < 255, 'a little wider than the bust');
+  assert.equal(BASE_DENOISE, 0.85);
 });
 
 test('a smaller amount makes a shorter canvas', async () => {
