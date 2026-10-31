@@ -7,11 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, PICTURE_LED_TYPES, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, COMPLETE_SHARES, PICTURE_LED_TYPES, findStyle, isBust, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, inpaintWorkflow, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { INPAINT_STEPS, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
+import { CUT_OFF_SHARE, INPAINT_STEPS, basePrompt, bottomContact, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
@@ -32,11 +32,11 @@ export function targetSize(size: RestyleResult['options']['size'], drawn: [numbe
   return [Math.round(w * k), Math.round(h * k)];
 }
 
-/** The sizes a picture is drawn and kept at; with `more`, the height Complete the figure adds below it. */
-export function sizesFor(picture: [number, number], more: boolean, o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
-  const height = picture[1] + (more ? growthOf(picture[1]) : 0);
+/** The sizes a picture is drawn and kept at; `share` is the height Complete the figure adds below it, as a share of it (0: none). */
+export function sizesFor(picture: [number, number], share: number, o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
+  const height = picture[1] + (share > 0 ? growthOf(picture[1], share) : 0);
   const [w, h] = drawSize(picture[0] / height, qualityOf(o).size);
-  const [tw, th] = targetSize(o.size, [w, h], original && more ? [original[0], Math.round((original[1] * height) / picture[1])] : original);
+  const [tw, th] = targetSize(o.size, [w, h], original && share > 0 ? [original[0], Math.round((original[1] * height) / picture[1])] : original);
   return { w, h, tw, th };
 }
 
@@ -106,7 +106,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (!info.inpaint) throw new Error('This ComfyUI cannot inpaint, which Complete the figure needs: its Phansora API has to allow InpaintModelConditioning, DifferentialDiffusion and ImageToMask.');
       if (!byModel) throw new Error('Complete the figure needs the background-removal model, to cut the subject out before the missing part is drawn.');
     }
-    let { w, h, tw, th } = sizesFor([meta.width!, meta.height!], o.complete, o, input?.originalSize);
+    let { w, h, tw, th } = sizesFor([meta.width!, meta.height!], o.complete ? COMPLETE_SHARE : 0, o, input?.originalSize);
     const clearing = o.background !== 'white' || byModel;
     const byColor = clearing && pictureLed && !removal;
     let enlarges = tw > w && o.enhance && info.upscalers.length > 0;
@@ -148,6 +148,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     let startPicture: string | Buffer = ground;
     let startCutout = false;
+    let cutOff = 0;   // the share of the picture's width over which the subject reaches its bottom edge
     if (byModel) {
       stage('Cutting the subject out');
       const whitened = fs.readFileSync(ground);
@@ -155,24 +156,44 @@ export async function drawResult(id: string, signal: AbortSignal) {
       const on = await subjectOnWhite(whitened, mask);
       startPicture = on.png;
       startCutout = on.cut;
+      if (o.complete && on.cut) cutOff = await bottomContact(mask);
     }
     // the missing part, drawn by an inpaint from a description of it, and the picture's own pixels laid back
     let completed: DrawSettings['completed'];
-    if (o.complete && !startCutout) {
-      // nothing stands out of its picture (a hall, a landscape): there is no figure to finish, so it is drawn as it is
-      warnings.push('No figure found in this picture, so nothing was added below it: drawn as it is.');
-      ({ w, h, tw, th } = sizesFor([meta.width!, meta.height!], false, o, input?.originalSize));
-      enlarges = tw > w && o.enhance && info.upscalers.length > 0;
-    } else if (o.complete) {
-      const subjectOnly = startPicture as Buffer;
-      stage('Describing the missing part');
-      const described = await readLowerHalf(subjectOnly, signal);
-      const missing = lowerHalfPrompt(described, o.notes);
-      stage('Drawing the missing part');
-      const canvas = await extendCanvas(subjectOnly, [w, h]);
-      const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed }), { 'picture.png': canvas.picture, 'mask.png': canvas.mask }, signal);
-      startPicture = await layBack(drawn, canvas.picture, canvas.mask, [w, h]);
-      completed = { share: COMPLETE_SHARE, prompt: missing, described: described ? 'model' : 'template' };
+    if (o.complete) {
+      const picture: [number, number] = [meta.width!, meta.height!];
+      const resize = (share: number) => {
+        ({ w, h, tw, th } = sizesFor(picture, share, o, input?.originalSize));
+        enlarges = tw > w && o.enhance && info.upscalers.length > 0;
+      };
+      if (!startCutout) {
+        // nothing stands out of its picture (a hall, a landscape): there is no figure to finish, so it is drawn as it is
+        warnings.push('No figure found in this picture, so nothing was added below it: drawn as it is.');
+        resize(0);
+      } else if (cutOff < CUT_OFF_SHARE) {
+        // a figure that does not run out of the bottom edge has its feet, or its end, in the picture
+        warnings.push('The figure is not cut off at the bottom of this picture, so nothing was added below it: drawn as it is.');
+        resize(0);
+      } else {
+        const subjectOnly = startPicture as Buffer;
+        stage('Describing the missing part');
+        const read = await readLowerHalf(subjectOnly, signal);
+        if (read?.shown === 'whole') {
+          warnings.push('The whole figure is shown, so nothing was added below it: drawn as it is.');
+          resize(0);
+        } else {
+          // a head or a chest is finished as a bust on a base; more of a figure is drawn on down to its feet
+          const bust = isBust(read?.shown);
+          const share = read?.shown ? COMPLETE_SHARES[read.shown] : COMPLETE_SHARE;
+          resize(share);
+          const missing = bust ? basePrompt(o.notes) : lowerHalfPrompt(read?.sentence ?? null, o.notes);
+          stage('Drawing the missing part');
+          const canvas = await extendCanvas(subjectOnly, [w, h], share);
+          const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed }), { 'picture.png': canvas.picture, 'mask.png': canvas.mask }, signal);
+          startPicture = await layBack(drawn, canvas.picture, canvas.mask, [w, h]);
+          completed = { share, prompt: missing, described: !bust && read?.sentence ? 'model' : 'template', ...(read?.shown && { shown: read.shown }) };
+        }
+      }
     }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();

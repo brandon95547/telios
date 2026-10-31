@@ -94,8 +94,8 @@ test('a result is kept at the size asked for, never past 8192 pixels', () => {
 test('Complete the figure draws a taller picture, and a picture with no figure goes back to its own shape', () => {
   const o = { size: 'original', type: 'render3d', quality: 'auto' } as const;
   const picture: [number, number] = [1200, 800];
-  const taller = sizesFor(picture, true, o, picture);
-  const plain = sizesFor(picture, false, o, picture);
+  const taller = sizesFor(picture, 0.57, o, picture);
+  const plain = sizesFor(picture, 0, o, picture);
   assert.ok(taller.h / taller.w > plain.h / plain.w * 1.4, 'the picture is given room below');
   assert.deepEqual([taller.tw, taller.th], [1200, 1256], 'kept at the original width, in the taller shape');
   assert.deepEqual([plain.tw, plain.th], picture, 'the shape of the picture it was given');

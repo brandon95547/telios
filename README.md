@@ -67,18 +67,26 @@ model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 
 30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
 **Complete the figure** (a switch for 2D and 3D illustrations) is for a picture cut off at the bottom,
-a bust whose body is missing. The subject is cut out on flat white, 57% of its height is added below,
-and FLUX.1 Dev draws only that new area (an inpaint: a soft mask, through InpaintModelConditioning
-and DifferentialDiffusion) from a sentence describing what is missing, written by the model (a plain
-description if none is set up) with your extra words added ("ending in carved feet on a low base");
-the picture's own pixels are then laid back over the part that was there, and the whole is redrawn
-as usual. A plain redraw cannot extend a picture, and without a description the new area is random
-(a short "complete the figure" drew legs in jeans and boots), so the description is the point. It
-adds about a minute and a half a picture, and some seeds draw thin legs or boots: draw a few
-versions and keep the best. It needs the background-removal model and ComfyUI's inpaint nodes
-(`InpaintModelConditioning`, `DifferentialDiffusion`, `ImageToMask`). Through a Phansora API they
-must be on its gateway's allow-list, and the gateway reports `inpaint`; the switch is greyed out
-until it does. There is no larger amount than 57%: adding 100% drew a statue on long legs.
+a bust whose body is missing. It acts only on a figure that is cut off: the subject is cut out first,
+and one that does not reach the picture's bottom edge (a hall, a landscape, a figure with its feet in
+the picture) is drawn as it is, with a note on its tile, as is a picture the model reads as showing the
+whole figure. How much is added depends on how much the model says is shown (it answers *head*,
+*chest*, *waist*, *thighs* or *whole*, and writes a sentence about what continues below): a head or a
+chest is too little to draw a body from, so it is finished as a **bust on a low base** (18% of the
+height, drawn from a plain sentence about the base); a waist or thighs is drawn on down to the feet
+(65% or 40%; 100% drew a statue on long legs). FLUX.1 Dev draws only that new area (an inpaint: a soft
+mask, through InpaintModelConditioning and DifferentialDiffusion) from the sentence, with your extra
+words added ("ending in carved feet on a low base"); the picture's own pixels are then laid back over
+the part that was there, and the whole is redrawn as usual. Without a model there is no reading: a
+figure that touches the bottom edge gets 57% and a plain description of its lower half. The preview's
+settings say what was shown, what was added and the sentence it was asked for. A plain redraw cannot
+extend a picture, and without a description the new area is random (a short "complete the figure" drew
+legs in jeans and boots), so the description is the point. It adds about a minute and a half a picture,
+and some seeds draw thin legs or boots: draw a few versions and keep the best. It needs the
+background-removal model and ComfyUI's inpaint nodes (`InpaintModelConditioning`,
+`DifferentialDiffusion`, `ImageToMask`). Through a Phansora API they must be on its gateway's
+allow-list, and the gateway reports `inpaint`; the switch is greyed out until it does. The amounts
+for a bust and a waist are first guesses: they have not been drawn yet.
 
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,

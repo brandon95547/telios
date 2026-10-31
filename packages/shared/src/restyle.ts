@@ -76,6 +76,18 @@ export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
  * legs, so there is no more than this. */
 export const COMPLETE_SHARE = 0.57;
 
+/** How much of a figure a picture shows, as the model reads it. */
+export const SHOWN = ['head', 'chest', 'waist', 'thighs', 'whole'] as const;
+export type Shown = (typeof SHOWN)[number];
+export const SHOWN_TEXT: Record<Shown, string> = { head: 'the head only', chest: 'the head and chest', waist: 'down to the waist', thighs: 'down to the thighs', whole: 'all of it' };
+
+/** What Complete the figure adds below a figure, by how much of it is shown (a share of the picture's height).
+ * A head or a chest is too little of a figure to draw a body from: it is finished as a bust on a low base
+ * (a bust is a kind of statue). A waist or thighs are drawn on down to the feet, by amounts near the 57% that
+ * worked (100% drew a statue on long legs). Nothing is added to a whole figure. */
+export const COMPLETE_SHARES: Record<Exclude<Shown, 'whole'>, number> = { head: 0.18, chest: 0.18, waist: 0.65, thighs: 0.4 };
+export const isBust = (shown: Shown | null | undefined) => shown === 'head' || shown === 'chest';
+
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
  * Keyed by style id; the picture is `style-references/<id>.webp` in the data folder. `weight` is how
@@ -182,7 +194,7 @@ export interface DrawSettings {
   startCutout?: boolean;
   /** Complete the figure: the share of the height drawn below, what that part was asked for (`prompt`),
    * and whether the model or a plain template described it. */
-  completed?: { share: number; prompt: string; described: 'model' | 'template' };
+  completed?: { share: number; prompt: string; described: 'model' | 'template'; shown?: Shown };
   /** The upscaling model that enlarged it, when one did. */
   enlargedWith?: string;
 }
@@ -334,7 +346,9 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
   if (s?.completed) {
-    rows.push({ label: 'Complete the figure', value: `${Math.round(s.completed.share * 100)}% of the height drawn below, ${s.completed.described === 'model' ? 'described by the model' : 'from a plain description'}` });
+    const { shown, share } = s.completed;
+    const added = isBust(shown) ? `finished as a bust on a base (${Math.round(share * 100)}% of the height added)` : `${Math.round(share * 100)}% of the height drawn below`;
+    rows.push({ label: 'Complete the figure', value: `${added}${shown ? `, the picture showing ${SHOWN_TEXT[shown]}` : ''}, ${s.completed.described === 'model' ? 'described by the model' : 'from a plain description'}` });
     rows.push({ label: 'Missing part asked for', value: s.completed.prompt });
   }
   const ground = BACKGROUND_LABEL[o.background];
