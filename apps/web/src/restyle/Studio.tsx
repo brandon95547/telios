@@ -4,6 +4,7 @@ import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
 import { DownloadMenu } from './DownloadMenu.tsx';
+import { folderToSave, saveResults } from './approve.ts';
 import { BatchProgress, TileProgress } from './Progress.tsx';
 import { Viewer } from './Viewer.tsx';
 
@@ -141,6 +142,15 @@ export function Studio({ health }: { health: Health | null }) {
     const n = kept.size;
     if (confirm(`Delete ${n} picture${n === 1 ? '' : 's'}? Their files are removed for good.`)) act(() => restyle.deleteResults([...kept]));
   };
+  // Approve: the ticked pictures are saved into the For Talari folder (chosen once, in the browser), then taken out of the results
+  const approve = () => act(async () => {
+    const folder = await folderToSave();
+    if (!folder) return;
+    const { saved, names, error } = await saveResults(keptDone, folder);
+    if (saved.length) await restyle.deleteResults(saved);
+    if (error) throw new Error(`${saved.length ? `Saved ${saved.length} to ${folder.name} and took them out of the results. ` : ''}${error}`);
+    setNotice(`Saved ${saved.length === 1 ? names[0] : `${saved.length} pictures`} to ${folder.name} and took ${saved.length === 1 ? 'it' : 'them'} out of the results.`);
+  });
   const removeInputs = (ids: string[]) => {
     if (ids.length && confirm(`Remove ${ids.length} picture${ids.length === 1 ? '' : 's'} from the inputs? Results made from them stay.`)) act(() => restyle.deleteInputs(ids));
   };
@@ -220,6 +230,7 @@ export function Studio({ health }: { health: Health | null }) {
               <span className="spacer" />
               {running.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.stop(running.map((r) => r.id)))}>Stop the rest</button>}
               {failed.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.retry(again.map((r) => r.id)))}>{tickedFailed.length ? 'Try ticked again' : 'Try stopped & failed again'} ({again.length})</button>}
+              <button type="button" className="small" disabled={!keptDone.length || working} onClick={approve} title="Saves the ticked pictures into your For Talari folder (you choose it the first time), then takes them out of the results">Approve ticked ({keptDone.length})</button>
               <button type="button" className="small" disabled={!kept.size || working} onClick={removeResults}>Delete ticked ({kept.size})</button>
               <button type="button" className="small primary" disabled={!keptDone.length || working} onClick={download}>Download ticked ({keptDone.length})</button>
             </div>

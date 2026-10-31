@@ -6,8 +6,13 @@ Telios has two tools.
 ComfyUI in the look you choose: clip art, line art, a 2D illustration or a 3D illustration, in one
 of Talari's art styles (and a medium, for 2D illustrations) and one of its themes. Add one picture,
 several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
-results come back in a grid to tick, download as a zip (in folders by type, style and theme), or
-delete. Each picture being drawn shows what it is doing and a progress bar, and the grid shows how far
+results come back in a grid to tick, download as a zip (in folders by type, style and theme), delete,
+or **approve**: Approve ticked saves each ticked picture into a folder on your computer (the one you
+choose the first time, For Talari, which the browser then remembers: it needs Chrome, Edge or an app built
+on them, because Telios may run on a server that cannot write there) and takes it out of the results. A flat
+SVG is saved as its app package (a zip), clip art and line art as their SVG, anything else as the picture; a
+file already in the folder is never overwritten (the new one is "name (2)"), and a picture that could not
+be saved stays in the results. Each picture being drawn shows what it is doing and a progress bar, and the grid shows how far
 the whole batch has come. Clip art and line art come as SVG too. A fifth choice, **Flat SVG** (under Vector, beside
 2D and 3D), is drawn by a model instead of ComfyUI: new flat vector art of a frame, border, corner
 or ornament, one layer per color, with the data that fits a frame or border to any page. It is
