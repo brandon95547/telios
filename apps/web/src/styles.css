@@ -246,11 +246,13 @@ button.big { width: 100%; padding: 11px; font-size: 15px; }
 a.button, summary.button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 3px 10px; font-size: 13px; text-decoration: none; color: inherit; }
 a.button:hover, summary.button:hover { border-color: var(--faint); }
 .tiles { display: grid; gap: 12px; margin-top: 12px; }
-.tiles.inputs { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.tiles.inputs { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.tiles.results { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 .carousel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-top: 12px; }
 .carousel-slide { display: flex; flex-direction: column; gap: 8px; align-items: center; min-width: 0; }
-.carousel-slide .tile { width: 100%; max-width: 460px; }
-.carousel-slide .tile-img { aspect-ratio: 3 / 4; max-height: 70vh; }
+.carousel-slide .tiles { width: 100%; margin-top: 0; }
+.carousel-slide .tiles.inputs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 720px) { .carousel-slide .tiles.inputs { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); } }
 .carousel-count { font-size: 12.5px; color: var(--soft); }
 .carousel-arrow { width: 44px; height: 44px; border-radius: 50%; font-size: 26px; line-height: 1; padding: 0 0 3px; }
 .tile { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; background: var(--panel); min-width: 0; }

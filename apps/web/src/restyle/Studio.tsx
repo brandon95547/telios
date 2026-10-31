@@ -38,6 +38,9 @@ function SelectAll({ ids, selected, set, label }: { ids: string[]; selected: Set
   );
 }
 
+/** The source pictures shown at a time. */
+const INPUTS_PER_PAGE = 5;
+
 export function Studio({ health }: { health: Health | null }) {
   const first = useMemo(saved, []);
   const [options, setOptions] = useState(first.options);
@@ -51,7 +54,7 @@ export function Studio({ health }: { health: Health | null }) {
   const [messages, setMessages] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
-  const [slide, setSlide] = useState(0);   // the result the carousel shows
+  const [slide, setSlide] = useState(0);   // the page of input pictures the carousel shows
   const [over, setOver] = useState(false);
   const [working, setWorking] = useState(false);
   const [skew, setSkew] = useState(0);   // how far the server's clock is ahead of this page's, for the progress bars
@@ -164,7 +167,9 @@ export function Studio({ health }: { health: Health | null }) {
     : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);
   const viewable = done;
 
-  const shown = Math.min(slide, Math.max(0, results.length - 1));   // results are deleted: keep it in range
+  const pages = Math.max(1, Math.ceil(inputs.length / INPUTS_PER_PAGE));
+  const shown = Math.min(slide, pages - 1);   // pictures are removed: keep it in range
+  const firstShown = shown * INPUTS_PER_PAGE;
   return (
     <div className="studio"
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
@@ -208,8 +213,10 @@ export function Studio({ health }: { health: Health | null }) {
               <button type="button" className="small" disabled={!pickedInputs.size || working} onClick={() => removeInputs([...pickedInputs])}>Remove ticked ({pickedInputs.size})</button>
               <button type="button" className="small quiet" disabled={working} onClick={() => removeInputs(inputs.map((i) => i.id))}>Clear all</button>
             </div>
-            <div className="tiles inputs">
-              {inputs.map((i) => (
+            <Carousel count={pages} index={shown} setIndex={setSlide} label="Input images"
+              status={`${firstShown + 1}–${Math.min(inputs.length, firstShown + INPUTS_PER_PAGE)} of ${inputs.length}`}>
+              <div className="tiles inputs">
+              {inputs.slice(firstShown, firstShown + INPUTS_PER_PAGE).map((i) => (
                 <label key={i.id} className={`tile ${pickedInputs.has(i.id) ? 'on' : ''}`} title={i.subject ?? i.name}>
                   <input type="checkbox" checked={pickedInputs.has(i.id)} onChange={() => setPickedInputs((s) => toggled(s, i.id))} aria-label={`Tick ${i.name}`} />
                   <div className="tile-img">
@@ -220,7 +227,8 @@ export function Studio({ health }: { health: Health | null }) {
                   <div className="tile-meta">{i.originalSize ? `${i.originalSize[0]} × ${i.originalSize[1]} · ` : ''}{i.format.toUpperCase()}{i.folder ? ` · ${i.folder}` : ''}</div>
                 </label>
               ))}
-            </div>
+              </div>
+            </Carousel>
           </section>
         )}
 
@@ -239,8 +247,8 @@ export function Studio({ health }: { health: Health | null }) {
             </div>
             <BatchProgress results={results} skew={skew} />
             <p className="sub">Tick the ones to keep, then download them; or tick the ones to delete. Space in the large view ticks one.</p>
-            <Carousel count={results.length} index={shown} setIndex={setSlide} label="Results">
-              {[results[shown]].map((r) => {
+            <div className="tiles results">
+              {results.map((r) => {
                 const at = viewable.indexOf(r);
                 const ground = r.options.background === 'transparent' ? 'checker' : r.options.background === 'original' ? '' : r.options.background;
                 return (
@@ -266,13 +274,13 @@ export function Studio({ health }: { health: Health | null }) {
                   </div>
                 );
               })}
-            </Carousel>
+            </div>
           </section>
         )}
       </div>
 
       {viewing !== null && viewable[viewing] && (
-        <Viewer results={viewable} index={viewing} setIndex={setViewing} selected={kept} toggle={(id) => setKept((s) => toggled(s, id))} onClose={() => { setSlide(Math.max(0, results.indexOf(viewable[viewing]))); setViewing(null); }} />
+        <Viewer results={viewable} index={viewing} setIndex={setViewing} selected={kept} toggle={(id) => setKept((s) => toggled(s, id))} onClose={() => setViewing(null)} />
       )}
     </div>
   );
