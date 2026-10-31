@@ -48,19 +48,17 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
     <>
       <section className="panel-section">
         <h2><span className="step">2</span> Output style</h2>
-        {(['2D', '3D', 'Vector'] as const).map((group) => (
-          <div key={group} className="type-group">
-            <div className="label">{group}</div>
-            <div className="types">
-              {OUTPUT_TYPES.filter((t) => t.group === group).map((t) => (
-                <button key={t.value} type="button" className={`type ${t.value === options.type ? 'on' : ''}`} aria-pressed={t.value === options.type} onClick={() => chooseType(t.value)}>
-                  <b>{t.label}</b>
-                  <span>{t.hint}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
+        <label className="field">
+          <div className="label">Output type</div>
+          <select value={options.type} onChange={(e) => chooseType(e.target.value as OutputType)}>
+            {(['2D', '3D', 'Vector'] as const).map((group) => (
+              <optgroup key={group} label={group}>
+                {OUTPUT_TYPES.filter((t) => t.group === group).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <div className="sub">{type.hint}</div>
+        </label>
         {byModel && (
           <div className="sub">
             {health && !health.model.ok
@@ -122,11 +120,8 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         </div>}
         {pictureLed && (
           <div className="field">
-            <Toggle label="Draw it whole" on={options.whole && !noWhole} onChange={(v) => set('whole', v)} disabled={!!noWhole}
-              hint="Redraws a figure shown in part as the whole figure, standing, head to feet." />
-            <div className={`sub ${noWhole ? 'warn' : ''}`}>
-              {noWhole || 'For a bust or a half figure: the model describes the whole figure from head to feet, and it is drawn standing, on a taller canvas. The result is a new figure inspired by the picture (its headdress, clothes and colors, not its face), and the picture itself is not kept. Follow the original does not apply, and neither does the size of the original: it is kept at the size it is drawn. It is drawn on a plain white ground; choose a background below to cut it out.'}
-            </div>
+            <Toggle label="Draw it whole" on={options.whole && !noWhole} onChange={(v) => set('whole', v)} disabled={!!noWhole} />
+            {noWhole && <div className="sub warn">{noWhole}</div>}
           </div>
         )}
         <div className="field">
@@ -175,16 +170,20 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             {QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}: {q.size} px, {q.steps} steps</option>)}
           </select>
         </label>}
-        <div className="field">
+        <label className="field">
           <div className="label">Background</div>
-          <Seg label="Background" value={options.background}
-            onChange={(v) => set('background', v === options.background && pictureLed ? 'original' : v)}
-            options={[...(pictureLed ? [{ value: 'original' as const, label: 'Keep original' }] : []), { value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }, { value: 'green', label: 'Green' }]} />
-          {pictureLed && <div className="sub">{options.background === 'original' ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it (choose it again to go back).' : 'The subject is cut out of the picture and put on this background.'}</div>}
+          <select value={options.background} onChange={(e) => set('background', e.target.value as RestyleOptions['background'])}>
+            {pictureLed && <option value="original">Keep original</option>}
+            <option value="transparent">Transparent</option>
+            <option value="white">White</option>
+            <option value="black">Black</option>
+            <option value="green">Green</option>
+          </select>
+          {pictureLed && <div className="sub">{options.background === 'original' ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it.' : 'The subject is cut out of the picture and put on this background.'}</div>}
           {options.background !== 'white' && options.background !== 'original' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
             <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
-        </div>
+        </label>
         {!byModel && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
           hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />}
         <Toggle label="Process every picture" on={batchAll} onChange={setBatchAll} hint="Off: only the pictures you tick." />

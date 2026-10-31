@@ -5,6 +5,7 @@ import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
 import { DownloadMenu } from './DownloadMenu.tsx';
 import { folderToSave, saveResults } from './approve.ts';
+import { Carousel } from './Carousel.tsx';
 import { BatchProgress, TileProgress } from './Progress.tsx';
 import { Viewer } from './Viewer.tsx';
 
@@ -50,6 +51,7 @@ export function Studio({ health }: { health: Health | null }) {
   const [messages, setMessages] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
+  const [slide, setSlide] = useState(0);   // the result the carousel shows
   const [over, setOver] = useState(false);
   const [working, setWorking] = useState(false);
   const [skew, setSkew] = useState(0);   // how far the server's clock is ahead of this page's, for the progress bars
@@ -162,6 +164,7 @@ export function Studio({ health }: { health: Health | null }) {
     : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);
   const viewable = done;
 
+  const shown = Math.min(slide, Math.max(0, results.length - 1));   // results are deleted: keep it in range
   return (
     <div className="studio"
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
@@ -236,8 +239,8 @@ export function Studio({ health }: { health: Health | null }) {
             </div>
             <BatchProgress results={results} skew={skew} />
             <p className="sub">Tick the ones to keep, then download them; or tick the ones to delete. Space in the large view ticks one.</p>
-            <div className="tiles results">
-              {results.map((r) => {
+            <Carousel count={results.length} index={shown} setIndex={setSlide} label="Results">
+              {[results[shown]].map((r) => {
                 const at = viewable.indexOf(r);
                 const ground = r.options.background === 'transparent' ? 'checker' : r.options.background === 'original' ? '' : r.options.background;
                 return (
@@ -263,13 +266,13 @@ export function Studio({ health }: { health: Health | null }) {
                   </div>
                 );
               })}
-            </div>
+            </Carousel>
           </section>
         )}
       </div>
 
       {viewing !== null && viewable[viewing] && (
-        <Viewer results={viewable} index={viewing} setIndex={setViewing} selected={kept} toggle={(id) => setKept((s) => toggled(s, id))} onClose={() => setViewing(null)} />
+        <Viewer results={viewable} index={viewing} setIndex={setViewing} selected={kept} toggle={(id) => setKept((s) => toggled(s, id))} onClose={() => { setSlide(Math.max(0, results.indexOf(viewable[viewing]))); setViewing(null); }} />
       )}
     </div>
   );
