@@ -40,7 +40,7 @@ export const FLUX = {
   guidance: Number(process.env.FLUX_GUIDANCE ?? 3.5),
   sampler: process.env.COMFYUI_SAMPLER || 'euler',
   scheduler: process.env.COMFYUI_SCHEDULER || 'simple',
-  easycache: Number(process.env.FLUX_EASYCACHE ?? 0.2),
+  easycache: Number(process.env.FLUX_EASYCACHE ?? 0),
 };
 
 // Signing in, for a Telios on a public address: required once an account exists or

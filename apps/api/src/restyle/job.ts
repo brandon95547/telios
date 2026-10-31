@@ -102,6 +102,9 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let subject = input?.subject;
     const pictureLed = PICTURE_LED_TYPES.includes(o.type);
     const quality = qualityOf(o);
+    // every step runs: EasyCache skips the steps of a short img2img run unpredictably, so the same settings
+    // came out sharp one time and soft the next (whatever the server's own setting is)
+    const flux = { ...info.flux, easycache: 0 };
 
     // a picture of something (a character, an object) is cut out of its ground by a model, before it is
     // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
@@ -194,14 +197,14 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     // what ComfyUI is given, kept with the result for the preview to show (the cutout and any enlargement are added below)
     const settings: DrawSettings = {
-      model: info.flux.unet, width: w, height: h, steps: quality.steps, denoise, guidance: info.flux.guidance,
-      sampler: info.flux.sampler, scheduler: info.flux.scheduler, easycache: info.flux.easycache,
+      model: flux.unet, width: w, height: h, steps: quality.steps, denoise, guidance: flux.guidance,
+      sampler: flux.sampler, scheduler: flux.scheduler, easycache: flux.easycache,
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
       ...(o.whole && { whole: { prompt } }),
     };
     updateResult(id, (x) => { x.settings = settings; });
-    let png = await comfy().run(restyleWorkflow(info.flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
+    let png = await comfy().run(restyleWorkflow(flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
 
     if (clearing) {
       stage('Clearing the background');
