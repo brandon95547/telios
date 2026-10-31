@@ -15,7 +15,7 @@ function saved(): { options: RestyleOptions; batchAll: boolean; subfolders: bool
     const s = JSON.parse(localStorage.getItem(SAVED) ?? '{}');
     return { options: cleanOptions({ ...DEFAULT_OPTIONS, ...s.options }), batchAll: s.batchAll ?? true, subfolders: s.subfolders ?? true };
   } catch {
-    return { options: DEFAULT_OPTIONS, batchAll: true, subfolders: true };
+    return { options: cleanOptions(DEFAULT_OPTIONS), batchAll: true, subfolders: true };
   }
 }
 
@@ -239,7 +239,7 @@ export function Studio({ health }: { health: Health | null }) {
             <div className="tiles results">
               {results.map((r) => {
                 const at = viewable.indexOf(r);
-                const ground = r.options.background === 'transparent' ? 'checker' : r.options.background;
+                const ground = r.options.background === 'transparent' ? 'checker' : r.options.background === 'original' ? '' : r.options.background;
                 return (
                   <div key={r.id} className={`tile ${kept.has(r.id) ? 'on' : ''} ${r.status}`}>
                     <input type="checkbox" checked={kept.has(r.id)} onChange={() => setKept((s) => toggled(s, r.id))} aria-label={`Tick ${r.inputName}`} />

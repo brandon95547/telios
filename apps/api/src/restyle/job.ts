@@ -7,12 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, COMPLETE_SHARE, COMPLETE_SHARES, PICTURE_LED_TYPES, WHOLE_ASPECT, WHOLE_DENOISE, findStyle, isBust, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, WHOLE_ASPECT, WHOLE_DENOISE, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
-import { cutoutWorkflow, drawSize, inpaintWorkflow, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { BASE_DENOISE, CUT_OFF_SHARE, INPAINT_STEPS, baseMask, basePrompt, baseStart, bottomContact, bottomSpan, extendCanvas, growthOf, layBack, lowerHalfPrompt, readLowerHalf } from './complete.ts';
+import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
 import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
@@ -34,20 +33,19 @@ export function targetSize(size: RestyleResult['options']['size'], drawn: [numbe
   return [Math.round(w * k), Math.round(h * k)];
 }
 
-/** The sizes a picture is drawn and kept at; `share` is the height Complete the figure adds below it, as a share of it (0: none). */
-export function sizesFor(picture: [number, number], share: number, o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
-  const height = picture[1] + (share > 0 ? growthOf(picture[1], share) : 0);
-  const [w, h] = drawSize(picture[0] / height, qualityOf(o).size);
-  const [tw, th] = targetSize(o.size, [w, h], original && share > 0 ? [original[0], Math.round((original[1] * height) / picture[1])] : original);
+/** The sizes a picture is drawn and kept at. */
+export function drawnSizes(picture: [number, number], o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
+  const [w, h] = drawSize(picture[0] / picture[1], qualityOf(o).size);
+  const [tw, th] = targetSize(o.size, [w, h], original);
   return { w, h, tw, th };
 }
 
-/** The sizes a whole figure (Draw it whole) is drawn and kept at: a 2:3 canvas, whatever shape the picture was; "original"
- * keeps the longer side of the picture it came from. */
-export function wholeSizes(o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>, original?: [number, number]) {
+/** The sizes a whole figure (Draw it whole) is drawn and kept at: a 2:3 canvas, whatever shape the picture was. "Same size as
+ * the original" has no meaning here (the shape is new, and a small source would shrink a whole figure to a few hundred
+ * pixels: a face of 40), so it keeps what was drawn. */
+export function wholeSizes(o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>) {
   const [w, h] = drawSize(WHOLE_ASPECT, qualityOf(o).size);
-  const long = original ? Math.max(...original) : 0;
-  const [tw, th] = o.size === 'original' && long ? targetSize('drawn', [Math.round((w * long) / h), long]) : targetSize(o.size, [w, h]);
+  const [tw, th] = targetSize(o.size === 'original' ? 'drawn' : o.size, [w, h]);
   return { w, h, tw, th };
 }
 
@@ -108,27 +106,22 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // a picture of something (a character, an object) is cut out of its ground by a model, before it is
     // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
     // black or green); without a model it is drawn on a flat key color, green (blue if the picture has
-    // greens), and cut out by color
+    // greens), and cut out by color. With no ground chosen (the original's own) nothing is cut out at all.
     const removal = info.backgroundRemoval;
-    const byModel = pictureLed && !!removal;
+    const keep = o.background === 'original';
+    const byModel = pictureLed && !!removal && !keep;
 
-    // Complete the figure draws a taller picture: the same width, with the cut-off part added below
-    if (o.complete) {
-      if (!info.inpaint) throw new Error('This ComfyUI cannot inpaint, which Complete the figure needs: its Phansora API has to allow InpaintModelConditioning, DifferentialDiffusion and ImageToMask.');
-      if (!byModel) throw new Error('Complete the figure needs the background-removal model, to cut the subject out before the missing part is drawn.');
-    }
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
-    let { w, h, tw, th } = o.whole ? wholeSizes(o, input?.originalSize) : sizesFor([meta.width!, meta.height!], o.complete ? COMPLETE_SHARE : 0, o, input?.originalSize);
-    const clearing = o.background !== 'white' || byModel;
+    const { w, h, tw, th } = o.whole ? wholeSizes(o) : drawnSizes([meta.width!, meta.height!], o, input?.originalSize);
+    const clearing = !keep && (o.background !== 'white' || byModel);
     const byColor = clearing && pictureLed && !removal;
-    let enlarges = tw > w && o.enhance && info.upscalers.length > 0;
+    const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
       ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
       { label: 'Preparing the picture', seconds: 2 },
       ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
       ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
-      ...(o.complete ? [{ label: 'Describing the missing part', seconds: 4 }, { label: 'Drawing the missing part', seconds: 90 }] : []),
       { label: 'Drawing', seconds: 28 },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
@@ -159,9 +152,13 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
 
-    // a scan's gray or yellowed paper, made white first: redrawn, it would stay gray
-    await python(['whiten', path.join(dir, 'source.png'), path.join(scratch, 'white.png')]);
-    let ground = path.join(scratch, 'white.png');
+    // a scan's gray or yellowed paper, made white first: redrawn, it would stay gray (a picture that keeps its own
+    // ground is drawn as it is)
+    let ground = path.join(dir, 'source.png');
+    if (!keep) {
+      await python(['whiten', ground, path.join(scratch, 'white.png')]);
+      ground = path.join(scratch, 'white.png');
+    }
     if (key) {
       // FLUX keeps the ground it is given, so the picture starts on the key color, not on white
       ground = path.join(scratch, 'ground.png');
@@ -169,8 +166,6 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     let startPicture: string | Buffer = ground;
     let startCutout = false;
-    let cutOff = 0;   // the share of the picture's width over which the subject reaches its bottom edge
-    let cutMask: Buffer | undefined;   // the model's mask of the subject
     // (a whole figure is drawn from nothing, so the picture it starts from is not cut out)
     if (byModel && !o.whole) {
       stage('Cutting the subject out');
@@ -179,54 +174,6 @@ export async function drawResult(id: string, signal: AbortSignal) {
       const on = await subjectOnWhite(whitened, mask);
       startPicture = on.png;
       startCutout = on.cut;
-      if (o.complete && on.cut) { cutMask = mask; cutOff = await bottomContact(mask); }
-    }
-    // the missing part, drawn by an inpaint from a description of it, and the picture's own pixels laid back
-    let completed: DrawSettings['completed'];
-    if (o.complete) {
-      const picture: [number, number] = [meta.width!, meta.height!];
-      const resize = (share: number) => {
-        ({ w, h, tw, th } = sizesFor(picture, share, o, input?.originalSize));
-        enlarges = tw > w && o.enhance && info.upscalers.length > 0;
-      };
-      if (!startCutout) {
-        // nothing stands out of its picture (a hall, a landscape): there is no figure to finish, so it is drawn as it is
-        warnings.push('No figure found in this picture, so nothing was added below it: drawn as it is.');
-        resize(0);
-      } else if (cutOff < CUT_OFF_SHARE) {
-        // a figure that does not run out of the bottom edge has its feet, or its end, in the picture
-        warnings.push('The figure is not cut off at the bottom of this picture, so nothing was added below it: drawn as it is.');
-        resize(0);
-      } else {
-        const subjectOnly = startPicture as Buffer;
-        stage('Describing the missing part');
-        const read = await readLowerHalf(subjectOnly, signal);
-        if (read?.shown === 'whole') {
-          warnings.push('The whole figure is shown, so nothing was added below it: drawn as it is.');
-          resize(0);
-        } else {
-          // a head or a chest is finished as a bust on a base; more of a figure is drawn on down to its feet
-          const bust = isBust(read?.shown);
-          const share = read?.shown ? COMPLETE_SHARES[read.shown] : COMPLETE_SHARE;
-          resize(share);
-          const missing = bust ? basePrompt(o.notes) : lowerHalfPrompt(read?.sentence ?? null, o.notes);
-          stage('Drawing the missing part');
-          let canvas = await extendCanvas(subjectOnly, [w, h], share);
-          let area = canvas.mask;
-          let denoise: number | undefined;
-          // a bust is given a plain slab under it and only the base's shape to redraw: told only to draw a base, FLUX drew a
-          // reflection or a floor under it three times in four
-          const span = bust && cutMask ? await bottomSpan(cutMask) : null;
-          if (span && cutMask) {
-            canvas = { picture: await baseStart(subjectOnly, cutMask, span, [w, h], share), mask: canvas.mask };
-            area = await baseMask(span, picture, [w, h], share);
-            denoise = BASE_DENOISE;
-          }
-          const drawn = await comfy().run(inpaintWorkflow(info.flux, { prompt: missing, steps: INPAINT_STEPS, seed, denoise }), { 'picture.png': canvas.picture, 'mask.png': area }, signal);
-          startPicture = await layBack(drawn, canvas.picture, area, [w, h]);
-          completed = { share, prompt: missing, described: !bust && read?.sentence ? 'model' : 'template', ...(read?.shown && { shown: read.shown }) };
-        }
-      }
     }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
@@ -251,7 +198,6 @@ export async function drawResult(id: string, signal: AbortSignal) {
       sampler: info.flux.sampler, scheduler: info.flux.scheduler, easycache: info.flux.easycache,
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
-      ...(completed && { completed }),
       ...(o.whole && { whole: { prompt } }),
     };
     updateResult(id, (x) => { x.settings = settings; });
@@ -279,7 +225,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
         settings.cutout = { by: 'color', with: o.type === 'lineart' ? 'white, keeping the ink' : 'white' };
       }
-      if (cleared && o.background !== 'transparent') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
+      if (cleared && o.background !== 'transparent' && o.background !== 'original') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
     }
 
     if (enlarges) {

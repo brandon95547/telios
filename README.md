@@ -59,7 +59,10 @@ ComfyUI is only lent the work. Where it runs is one setting in `.env`:
   models once (about 12 GB; `npm run comfyui` does only that), then starts it on 127.0.0.1:8189.
   It wants an NVIDIA GPU; a Mac draws with Metal, slowly.
 
-The header says whether ComfyUI is ready. The Background is transparent, white, black or green.
+The header says whether ComfyUI is ready. The Background is optional for 2D and 3D illustrations:
+left on **Keep original** (the default) nothing is cut out, before the redraw or after it, and the picture
+is redrawn with its own background (its prompt says nothing about the ground); choose transparent, white,
+black or green and the subject is cut out onto it, as follows (clip art and line art always have one, to be traced).
 With a background removal model (BiRefNet), a 2D or 3D illustration is redrawn from its subject cut
 out of the picture and put on flat white (FLUX keeps the ground it is given, so asking for a white
 background in the prompt does nothing to a photographed one), then cut out again and placed on the
@@ -71,7 +74,7 @@ color, and a plain background is made clear by color for clip art and line art. 
 model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 a picture takes about
 30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
-**Draw it whole** (a switch for 2D and 3D illustrations, instead of Complete the figure) redraws a figure
+**Draw it whole** (a switch for 2D and 3D illustrations) redraws a figure
 shown in part (a bust, a half figure) as the whole figure, standing, head to feet: the model reads the
 picture and writes one detailed paragraph (120 to 180 words): the visible part described as exactly as it
 is (colors, materials, pose and facing, every item with its own detail: headdress, face and expression,
@@ -80,37 +83,13 @@ materials, ornament and style, down to the feet: a statue on a low base, a livin
 That paragraph is the redraw's prompt (the detail of the description is the detail of the figure, and the
 only thing that ties the figure to the picture), on a taller 2:3 canvas, drawn from
 nothing (denoise 1; Follow the original does not apply). Nothing is added to the picture: no cutout of a
-base, no inpaint, a single draw. It is a new figure inspired by the picture (its headdress, clothes and
+base, no mask, a single draw. It is a new figure inspired by the picture (its headdress, clothes and
 colors, not its face), which is the point. Tried at small sizes on a close-up of a pharaoh, the usual
 wording ("a variation of the referenced image", even "as a full-length figure") gave a cartoon boy at 0.85
 and a blank mannequin at 0.95, while a prompt that describes the whole figure gave a standing statue; but
 only from nothing: started from the picture cut out and cropped into the tall canvas, 0.85 and 0.9 stayed
 close-ups, because a face fills the frame. Some small draws came out as two figures, so draw a few
 versions. It needs the model.
-
-**Complete the figure** (a switch for 2D and 3D illustrations) is for a picture cut off at the bottom,
-a bust whose body is missing. It acts only on a figure that is cut off: the subject is cut out first,
-and one that does not reach the picture's bottom edge (a hall, a landscape, a figure with its feet in
-the picture) is drawn as it is, with a note on its tile, as is a picture the model reads as showing the
-whole figure. How much is added depends on how much the model says is shown (it answers *head*,
-*chest*, *waist*, *thighs* or *whole*, and writes a sentence about what continues below): a head or a
-chest is too little to draw a body from, so it is finished as a **bust on a low base** (18% of the
-height; a plain slab in the bust's own colour is put under it and redrawn as the base, 85% of the way,
-in the base's shape only: told only to draw a base, FLUX drew a reflection or a floor three times in
-four, and with the slab it drew one every time); a waist or thighs is drawn on down to the feet
-(65% or 40%; 100% drew a statue on long legs). FLUX.1 Dev draws only that new area (an inpaint: a soft
-mask, through InpaintModelConditioning and DifferentialDiffusion) from the sentence, with your extra
-words added ("ending in carved feet on a low base"); the picture's own pixels are then laid back over
-the part that was there, and the whole is redrawn as usual. Without a model there is no reading: a
-figure that touches the bottom edge gets 57% and a plain description of its lower half. The preview's
-settings say what was shown, what was added and the sentence it was asked for. A plain redraw cannot
-extend a picture, and without a description the new area is random (a short "complete the figure" drew
-legs in jeans and boots), so the description is the point. It adds about a minute and a half a picture,
-and some seeds draw thin legs or boots: draw a few versions and keep the best. It needs the
-background-removal model and ComfyUI's inpaint nodes (`InpaintModelConditioning`,
-`DifferentialDiffusion`, `ImageToMask`). Through a Phansora API they must be on its gateway's
-allow-list, and the gateway reports `inpaint`; the switch is greyed out until it does. The amounts
-for a bust and a waist are first guesses: they have not been drawn yet.
 
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,

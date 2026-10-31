@@ -70,12 +70,6 @@ export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise
  * (and a bust at 0.70 from a photo became a man in a flight suit). */
 export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
 
-/** Complete the figure: a picture cut off at the bottom has this share of its height added below, drawn
- * by an inpaint from a description of what is missing, before the redraw. 0.57 is what was tried (a bust
- * of 700 pixels given 400 more, which came out as a plausible lower body); +1.0 drew a statue on long
- * legs, so there is no more than this. */
-export const COMPLETE_SHARE = 0.57;
-
 /** Draw it whole: a figure shown in part is redrawn as the whole figure, from a sentence the model writes
  * about it full-length, on a taller canvas (2:3). The redraw starts from nothing (denoise 1): from the picture
  * (a close-up of a face cropped into a tall canvas) it would keep the close-up, at 0.75 and at 0.85 and 0.9
@@ -83,18 +77,6 @@ export const COMPLETE_SHARE = 0.57;
  * only read by the model, and the figure is a new one inspired by it. */
 export const WHOLE_DENOISE = 1;
 export const WHOLE_ASPECT = 2 / 3;
-
-/** How much of a figure a picture shows, as the model reads it. */
-export const SHOWN = ['head', 'chest', 'waist', 'thighs', 'whole'] as const;
-export type Shown = (typeof SHOWN)[number];
-export const SHOWN_TEXT: Record<Shown, string> = { head: 'the head only', chest: 'the head and chest', waist: 'down to the waist', thighs: 'down to the thighs', whole: 'all of it' };
-
-/** What Complete the figure adds below a figure, by how much of it is shown (a share of the picture's height).
- * A head or a chest is too little of a figure to draw a body from: it is finished as a bust on a low base
- * (a bust is a kind of statue). A waist or thighs are drawn on down to the feet, by amounts near the 57% that
- * worked (100% drew a statue on long legs). Nothing is added to a whole figure. */
-export const COMPLETE_SHARES: Record<Exclude<Shown, 'whole'>, number> = { head: 0.18, chest: 0.18, waist: 0.65, thighs: 0.4 };
-export const isBust = (shown: Shown | null | undefined) => shown === 'head' || shown === 'chest';
 
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
@@ -117,10 +99,13 @@ export const STYLE_REFERENCE_TYPES: OutputType[] = ['illustration', 'render3d'];
 /** Whether this type and style are drawn with a reference picture. */
 export const wantsStyleReference = (o: { type: OutputType; style: string }) => !!STYLE_REFERENCES[o.style] && STYLE_REFERENCE_TYPES.includes(o.type);
 
-export type Background = 'transparent' | 'white' | 'black' | 'green';
-/** What each ground is filled with, and called. Transparent has no fill. */
-export const BACKGROUND_HEX: Record<Exclude<Background, 'transparent'>, string> = { white: '#ffffff', black: '#000000', green: '#00ff00' };
-export const BACKGROUND_LABEL: Record<Background, string> = { transparent: 'Transparent', white: 'White', black: 'Black', green: 'Green' };
+/** The ground a picture ends on. 'original' (none chosen) keeps the picture's own background: nothing is cut out, before
+ * the redraw or after it (2D and 3D illustrations only: clip art and line art are cut out to be traced). The others cut
+ * the subject out and fill the rest, or leave it clear. */
+export type Background = 'original' | 'transparent' | 'white' | 'black' | 'green';
+/** What each ground is filled with, and called. Transparent has no fill, the original keeps its own. */
+export const BACKGROUND_HEX: Record<Exclude<Background, 'original' | 'transparent'>, string> = { white: '#ffffff', black: '#000000', green: '#00ff00' };
+export const BACKGROUND_LABEL: Record<Background, string> = { original: 'Keep the original', transparent: 'Transparent', white: 'White', black: 'Black', green: 'Green' };
 /** drawn: the size ComfyUI draws at; original: the input's own size; 2 and 4: the drawn size enlarged. */
 export type OutputSize = 'drawn' | 'original' | '2x' | '4x';
 export type OutputFormat = 'png' | 'webp' | 'jpeg';
@@ -143,8 +128,6 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
-  /** Draw the part of the picture that is cut off below (COMPLETE_SHARE), for 2D and 3D illustrations. */
-  complete: boolean;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for 2D and 3D illustrations. */
   whole: boolean;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
@@ -153,7 +136,7 @@ export interface RestyleOptions {
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'transparent', size: 'drawn', enhance: false, format: 'png', notes: '', complete: false, whole: false, madeFor: 'auto',
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, madeFor: 'auto',
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -202,9 +185,6 @@ export interface DrawSettings {
   cutout?: { by: 'model' | 'color' | 'none'; with?: string };
   /** The picture was redrawn from its subject cut out and put on flat white, not from the picture as it was. */
   startCutout?: boolean;
-  /** Complete the figure: the share of the height drawn below, what that part was asked for (`prompt`),
-   * and whether the model or a plain template described it. */
-  completed?: { share: number; prompt: string; described: 'model' | 'template'; shown?: Shown };
   /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
   whole?: { prompt: string };
   /** The upscaling model that enlarged it, when one did. */
@@ -308,13 +288,14 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
   o.variations = Math.max(1, Math.min(4, Math.round(Number(raw?.variations) || 1)));
-  o.background = pick(raw?.background, ['transparent', 'white', 'black', 'green'] as const, o.background);
+  o.background = pick(raw?.background, ['original', 'transparent', 'white', 'black', 'green'] as const, o.background);
+  // clip art and line art are cut out of their ground to be traced, and a flat SVG has none: they always have a choice
+  if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type)) o.background = 'transparent';
   o.size = pick(raw?.size, ['drawn', 'original', '2x', '4x'] as const, o.size);
   o.enhance = raw?.enhance === true;
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
-  o.complete = PICTURE_LED_TYPES.includes(o.type) && raw?.complete === true && !o.whole;   // one or the other
   o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto') : 'auto';
   return o;
 }
@@ -362,17 +343,11 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     rows.push({ label: 'Draw it whole', value: 'the whole figure, described by the model and drawn from that sentence alone on a taller canvas (Follow the original does not apply)' });
     rows.push({ label: 'Figure asked for', value: s.whole.prompt });
   }
-  if (s?.completed) {
-    const { shown, share } = s.completed;
-    const added = isBust(shown) ? `finished as a bust on a base (${Math.round(share * 100)}% of the height added)` : `${Math.round(share * 100)}% of the height drawn below`;
-    rows.push({ label: 'Complete the figure', value: `${added}${shown ? `, the picture showing ${SHOWN_TEXT[shown]}` : ''}, ${s.completed.described === 'model' ? 'described by the model' : 'from a plain description'}` });
-    rows.push({ label: 'Missing part asked for', value: s.completed.prompt });
-  }
   const ground = BACKGROUND_LABEL[o.background];
   const c = s?.cutout;
   rows.push({
     label: 'Background',
-    value: !c ? ground : c.by === 'model' ? `${ground}, cut out by a model (${c.with})` : c.by === 'color' ? `${ground}, cleared by color${c.with ? ` from ${c.with}` : ''}` : `${ground}, not cleared`,
+    value: o.background === 'original' ? 'kept as in the original: nothing cut out' : !c ? ground : c.by === 'model' ? `${ground}, cut out by a model (${c.with})` : c.by === 'color' ? `${ground}, cleared by color${c.with ? ` from ${c.with}` : ''}` : `${ground}, not cleared`,
   });
   if (r.size) rows.push({ label: 'Kept as', value: `${o.format.toUpperCase()}, ${SIZE_WORDS[o.size]}, ${r.size[0]} × ${r.size[1]} px${s?.enlargedWith ? `, enlarged with ${s.enlargedWith}` : ''}` });
   return rows;

@@ -56,7 +56,7 @@ test('a mask of another size still fits the picture', async () => {
 test('Green is a background beside the others, filled with pure green', async () => {
   assert.equal(cleanOptions({ background: 'green' }).background, 'green');
   assert.equal(cleanOptions({ background: 'plaid' }).background, 'transparent');
-  assert.deepEqual(Object.keys(BACKGROUND_LABEL), ['transparent', 'white', 'black', 'green']);
+  assert.deepEqual(Object.keys(BACKGROUND_LABEL), ['original', 'transparent', 'white', 'black', 'green']);
   assert.deepEqual(BACKGROUND_HEX, { white: '#ffffff', black: '#000000', green: '#00ff00' });
   // a picture with a green ground is kept as it is in every format, with no white put behind it
   const green = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#00ff00' } }).png().toBuffer();

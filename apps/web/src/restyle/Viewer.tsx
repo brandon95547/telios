@@ -25,7 +25,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
   if (!r?.files) return null;
   const o = r.options;
   const byModel = drawnByModel(o.type);
-  const ground = o.background === 'transparent' ? 'checker' : o.background;
+  const ground = o.background === 'transparent' ? 'checker' : o.background === 'original' ? '' : o.background;
   return (
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`${r.inputName}, ${index + 1} of ${results.length}`} onClick={onClose}>
       <div className="viewer-box" onClick={(e) => e.stopPropagation()}>

@@ -76,7 +76,7 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     stage('Finishing', FINISHING);
     const from = (p: string) => path.join(DATA, p);
     let png = fs.readFileSync(from(res.files.preview));
-    if (o.background !== 'transparent') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
+    if (o.background !== 'transparent' && o.background !== 'original') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
     fs.writeFileSync(path.join(dir, 'result.png'), png);
     fs.copyFileSync(from(res.files.layered), path.join(dir, 'result.svg'));
     if (res.files.layout) fs.copyFileSync(from(res.files.layout), path.join(dir, 'layout.json'));

@@ -9,9 +9,9 @@ import type { AddressInfo } from 'node:net';
 process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-test-'));
 const { cleanOptions, DEFAULT_OPTIONS, STYLE_REFERENCES, wantsStyleReference, findStyle } = await import('@telios/shared');
 const { restylePrompt, subjectFromName } = await import('../src/restyle/prompt.ts');
-const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, inpaintWorkflow, USO } = await import('../src/comfy/workflows.ts');
+const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, USO } = await import('../src/comfy/workflows.ts');
 const { gatewayClient, localClient, tokenUser } = await import('../src/comfy/client.ts');
-const { sizesFor, targetSize, withMask } = await import('../src/restyle/job.ts');
+const { targetSize, withMask } = await import('../src/restyle/job.ts');
 const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
 
 const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip_l.safetensors', vae: 'ae.safetensors', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -20,7 +20,7 @@ const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip
 const GATEWAY_NODES = new Set(['LoadImage', 'ImageScale', 'ImageScaleBy', 'ImageInvert', 'UnetLoaderGGUF', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'CLIPTextEncode', 'FluxGuidance', 'EmptySD3LatentImage', 'VAEEncode', 'VAEDecode', 'KSampler', 'EasyCache', 'CLIPVisionLoader', 'CLIPVisionEncode', 'ModelPatchLoader', 'USOStyleReference', 'InpaintModelConditioning', 'DifferentialDiffusion', 'ImageToMask', 'LoadBackgroundRemovalModel', 'RemoveBackground', 'MaskToImage', 'UpscaleModelLoader', 'ImageUpscaleWithModel', 'SaveImage']);
 
 test('each output type asks for its own look, with the style, theme and background', () => {
-  const o = { ...DEFAULT_OPTIONS, type: 'clipart' as const, style: 'art-deco', theme: 'celtic' };
+  const o = { ...DEFAULT_OPTIONS, type: 'clipart' as const, style: 'art-deco', theme: 'celtic', background: 'transparent' as const };
   const p = restylePrompt(o, 'an oval frame with scrolls');
   assert.match(p, /^Colorful vector clip art of an oval frame with scrolls, in a flat design style/);
   assert.match(p, /art deco style, bold geometric symmetry/);
@@ -62,19 +62,9 @@ test('a picture is drawn at its own shape, in 16-pixel steps', () => {
 
 test('the workflows keep to the nodes the gateway runs', () => {
   const w = restyleWorkflow(FLUX, { prompt: 'p', width: 768, height: 768, steps: 16, denoise: 0.75, seed: 7 });
-  const inpaint = inpaintWorkflow(FLUX, { prompt: 'p', steps: 28, seed: 7 });
-  for (const wf of [w, cutoutWorkflow('birefnet.safetensors'), upscaleWorkflow('4x-UltraSharp.pth', 2), inpaint]) {
+  for (const wf of [w, cutoutWorkflow('birefnet.safetensors'), upscaleWorkflow('4x-UltraSharp.pth', 2)]) {
     for (const node of Object.values(wf)) assert.ok(GATEWAY_NODES.has(node.class_type), node.class_type);
   }
-  // an inpaint draws only what its mask names (denoise 1), through DifferentialDiffusion, from two pictures
-  assert.equal(inpaint['20'].inputs.image, 'picture.png');
-  assert.equal(inpaint['21'].inputs.image, 'mask.png');
-  assert.deepEqual(inpaint['22'].inputs, { image: ['21', 0], channel: 'red' });
-  assert.deepEqual(inpaint['24'].inputs.mask, ['22', 0]);
-  assert.deepEqual(inpaint['8'].inputs.model, ['25', 0]);
-  assert.deepEqual([inpaint['8'].inputs.positive, inpaint['8'].inputs.negative, inpaint['8'].inputs.latent_image], [['24', 0], ['24', 1], ['24', 2]]);
-  assert.equal(inpaint['8'].inputs.denoise, 1);
-  assert.equal(inpaintWorkflow(FLUX, { prompt: 'p', steps: 28, seed: 7, denoise: 0.85 })['8'].inputs.denoise, 0.85, 'a start picture (a bust\'s slab) is redrawn only part of the way');
   assert.equal(w['1'].class_type, 'UnetLoaderGGUF');
   assert.deepEqual(w['8'].inputs.model, ['12', 0]);   // through EasyCache
   assert.equal(w['8'].inputs.denoise, 0.75);
@@ -90,17 +80,6 @@ test('a result is kept at the size asked for, never past 8192 pixels', () => {
   assert.deepEqual(targetSize('4x', [2048, 2048]), [8192, 8192]);
   assert.deepEqual(targetSize('original', [768, 768], [3000, 3000]), [3000, 3000]);
   assert.deepEqual(targetSize('original', [768, 768]), [768, 768]);
-});
-
-test('Complete the figure draws a taller picture, and a picture with no figure goes back to its own shape', () => {
-  const o = { size: 'original', type: 'render3d', quality: 'auto' } as const;
-  const picture: [number, number] = [1200, 800];
-  const taller = sizesFor(picture, 0.57, o, picture);
-  const plain = sizesFor(picture, 0, o, picture);
-  assert.ok(taller.h / taller.w > plain.h / plain.w * 1.4, 'the picture is given room below');
-  assert.deepEqual([taller.tw, taller.th], [1200, 1256], 'kept at the original width, in the taller shape');
-  assert.deepEqual([plain.tw, plain.th], picture, 'the shape of the picture it was given');
-  assert.ok(Math.abs(plain.w / plain.h - 1.5) < 0.05);
 });
 
 test('names: a subject from a file name, a token\'s account, a zip\'s folders', () => {
@@ -149,7 +128,6 @@ let base = '';
 const seen: { method: string; url: string; headers: http.IncomingHttpHeaders; body: string }[] = [];
 let history = 0;
 let usoFiles = true;   // whether the mock ComfyUI has USO's files
-let inpaintNodes = true;   // whether it has the nodes an inpaint uses
 
 before(async () => {
   server = http.createServer(async (req, res) => {
@@ -159,7 +137,7 @@ before(async () => {
     const json = (status: number, v: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(v)); };
     const url = req.url!;
     // a Phansora API's gateway
-    if (url === '/talari/users/telios/comfyui') return json(200, { ready: true, detail: '', flux: FLUX, upscalers: ['4x-UltraSharp.pth'], backgroundRemoval: null, styleReference: true, inpaint: true });
+    if (url === '/talari/users/telios/comfyui') return json(200, { ready: true, detail: '', flux: FLUX, upscalers: ['4x-UltraSharp.pth'], backgroundRemoval: null, styleReference: true });
     if (url === '/talari/users/telios/comfyui/run') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end('PICTURE'); }
     if (url === '/talari/users/other/comfyui') return json(403, { detail: 'The ComfyUI lab is not open to this account.' });
     // ComfyUI itself
@@ -169,7 +147,6 @@ before(async () => {
       const field = { UnetLoaderGGUF: 'unet_name', DualCLIPLoader: 'clip_name1', VAELoader: 'vae_name', UpscaleModelLoader: 'model_name', LoraLoaderModelOnly: 'lora_name', ModelPatchLoader: 'name', CLIPVisionLoader: 'clip_name' }[node];
       const have = { UnetLoaderGGUF: [FLUX.unet], DualCLIPLoader: [FLUX.t5, FLUX.clipL], VAELoader: [FLUX.vae], UpscaleModelLoader: [], LoraLoaderModelOnly: usoFiles ? [USO.lora] : [], ModelPatchLoader: usoFiles ? [USO.projector] : [], CLIPVisionLoader: usoFiles ? [USO.vision] : [] }[node];
       if (node === 'USOStyleReference') return json(200, usoFiles ? { USOStyleReference: { input: {} } } : {});
-      if (['InpaintModelConditioning', 'DifferentialDiffusion', 'ImageToMask'].includes(node)) return json(200, inpaintNodes ? { [node]: { input: {} } } : {});
       return json(200, field ? { [node]: { input: { required: { [field]: [have, {}] } } } } : {});
     }
     if (url === '/upload/image') return json(200, { name: 'telios-up.png', subfolder: '', type: 'input' });
@@ -191,7 +168,6 @@ test('through a Phansora API: its files, the token, the pictures as base64', asy
   assert.equal(info.ready, true);
   assert.equal(info.flux?.unet, FLUX.unet);
   assert.equal(info.styleReference, true);
-  assert.equal(info.inpaint, true);
   const out = await c.run({ '1': { class_type: 'LoadImage', inputs: { image: 'source.png' } } }, { 'source.png': Buffer.from('hello') });
   assert.equal(out.toString(), 'PICTURE');
   const sent = seen.find((s) => s.url.endsWith('/comfyui/run'))!;
@@ -200,7 +176,6 @@ test('through a Phansora API: its files, the token, the pictures as base64', asy
   const refused = await gatewayClient(`${base}/talari`, 'v1.other.1999999999.sig').info();
   assert.equal(refused.ready, false);
   assert.equal(refused.styleReference, false);
-  assert.equal(refused.inpaint, false);
   assert.match(refused.detail, /not open to this account/);
 });
 
@@ -210,7 +185,6 @@ test('Telios\'s own ComfyUI: the upload\'s name in the workflow, the picture bac
   assert.equal(info.via, 'local');
   assert.equal(info.ready, true, info.detail);
   assert.equal(info.styleReference, true);
-  assert.equal(info.inpaint, true);
   const out = await c.run(restyleWorkflow(FLUX, { prompt: 'p', width: 768, height: 768, steps: 16, denoise: 0.75, seed: 7 }), { 'source.png': Buffer.from('hello') });
   assert.equal(out.toString(), 'DRAWN');
   const prompt = JSON.parse(seen.find((s) => s.url === '/prompt')!.body).prompt;
@@ -225,11 +199,6 @@ test('Telios\'s own ComfyUI: the upload\'s name in the workflow, the picture bac
   usoFiles = true;
   assert.equal(without.ready, true);
   assert.equal(without.styleReference, false);
-  inpaintNodes = false;   // an old ComfyUI without the inpaint nodes can draw as before, and cannot complete a figure
-  const old = await localClient(base, FLUX).info();
-  inpaintNodes = true;
-  assert.equal(old.ready, true);
-  assert.equal(old.inpaint, false);
 });
 
 test('a style\'s reference: its picture, made small, with the strength it is applied at', async () => {

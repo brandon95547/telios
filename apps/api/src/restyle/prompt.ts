@@ -46,7 +46,9 @@ export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor
     parts.push(`${name} themed, with ${name} motifs and ornament.`);
   }
   if (o.notes) parts.push(o.notes.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.'));
-  parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);
+  // with no ground chosen the picture keeps its own, and the prompt says nothing about it; a whole figure is still asked for
+  // on a plain white one (it has none of its own, and is drawn from nothing)
+  if (o.background !== 'original' || lead) parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);
   return parts.join(' ');
 }
 

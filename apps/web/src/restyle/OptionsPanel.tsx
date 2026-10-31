@@ -36,10 +36,11 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
     if (t !== 'illustration') set('medium', '');
     if (drawnByModel(t)) set('theme', '');
     if (!drawnByModel(t)) set('madeFor', 'auto');
-    if (!PICTURE_LED_TYPES.includes(t)) { set('complete', false); set('whole', false); }
+    if (!PICTURE_LED_TYPES.includes(t)) {
+      set('whole', false);
+      if (options.background === 'original') set('background', 'transparent');   // clip art and line art are cut out of their ground to be traced
+    }
   };
-  // Complete the figure cuts the subject out and draws the missing part by an inpaint: both need ComfyUI to have them
-  const noComplete = health ? (!health.comfy.cutout ? 'This ComfyUI has no background-removal model, which Complete the figure needs.' : !health.comfy.inpaint ? 'This ComfyUI cannot inpaint yet: its Phansora API has to be updated first.' : '') : '';
   // Draw it whole has the model describe the whole figure, which is what is drawn
   const noWhole = health && !health.model.ok ? `Draw it whole needs the model to describe the figure: ${health.model.error ?? 'set one up in .env'}` : '';
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
@@ -121,19 +122,10 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         </div>}
         {pictureLed && (
           <div className="field">
-            <Toggle label="Complete the figure" on={options.complete && !noComplete} onChange={(v) => { set('complete', v); if (v) set('whole', false); }} disabled={!!noComplete}
-              hint="Draws the part of the picture that is cut off at the bottom, before the redraw." />
-            <div className={`sub ${noComplete ? 'warn' : ''}`}>
-              {noComplete || 'For a picture cut off at the bottom (a bust, a half figure): its subject is cut out, and what is below the cut is added to the picture itself: a bust gets a base, a figure shown to the waist a body, then the whole is redrawn. Up to two minutes more a picture. A figure that is not cut off at the bottom is drawn as it is.'}
-            </div>
-          </div>
-        )}
-        {pictureLed && (
-          <div className="field">
-            <Toggle label="Draw it whole" on={options.whole && !noWhole} onChange={(v) => { set('whole', v); if (v) set('complete', false); }} disabled={!!noWhole}
+            <Toggle label="Draw it whole" on={options.whole && !noWhole} onChange={(v) => set('whole', v)} disabled={!!noWhole}
               hint="Redraws a figure shown in part as the whole figure, standing, head to feet." />
             <div className={`sub ${noWhole ? 'warn' : ''}`}>
-              {noWhole || 'For a bust or a half figure: the model describes the whole figure from head to feet, and it is drawn standing, on a taller canvas. The result is a new figure inspired by the picture (its headdress, clothes and colors, not its face), and the picture itself is not kept. Follow the original does not apply.'}
+              {noWhole || 'For a bust or a half figure: the model describes the whole figure from head to feet, and it is drawn standing, on a taller canvas. The result is a new figure inspired by the picture (its headdress, clothes and colors, not its face), and the picture itself is not kept. Follow the original does not apply, and neither does the size of the original: it is kept at the size it is drawn. It is drawn on a plain white ground; choose a background below to cut it out.'}
             </div>
           </div>
         )}
@@ -179,8 +171,11 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         </label>}
         <div className="field">
           <div className="label">Background</div>
-          <Seg label="Background" value={options.background} onChange={(v) => set('background', v)} options={[{ value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }, { value: 'green', label: 'Green' }]} />
-          {options.background !== 'white' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
+          <Seg label="Background" value={options.background}
+            onChange={(v) => set('background', v === options.background && pictureLed ? 'original' : v)}
+            options={[...(pictureLed ? [{ value: 'original' as const, label: 'Keep original' }] : []), { value: 'transparent', label: 'Transparent' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }, { value: 'green', label: 'Green' }]} />
+          {pictureLed && <div className="sub">{options.background === 'original' ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it (choose it again to go back).' : 'The subject is cut out of the picture and put on this background.'}</div>}
+          {options.background !== 'white' && options.background !== 'original' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
             <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
         </div>

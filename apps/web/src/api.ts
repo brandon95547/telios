@@ -6,7 +6,7 @@ export interface Health {
   ok: boolean; effort: string; maxRenders: number;
   model: { ok: boolean; provider: string; label: string; name: string; error?: string };
   /** The ComfyUI Restyle draws with: through a Phansora API (api) or Telios's own (local). */
-  comfy: { via: 'api' | 'local'; ready: boolean; detail: string; model: string; upscale: boolean; cutout: boolean; styleReference: boolean; inpaint: boolean };
+  comfy: { via: 'api' | 'local'; ready: boolean; detail: string; model: string; upscale: boolean; cutout: boolean; styleReference: boolean };
   /** The ids of the styles drawn with a reference picture that this server has the picture for. */
   styleReferences: string[];
   python: boolean;

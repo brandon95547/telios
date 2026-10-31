@@ -33,7 +33,7 @@ const cleanFolder = (s: string) => s.split('/').filter((p) => p.trim() && p !== 
 export async function inFormat(png: string, format: OutputFormat, background: RestyleResult['options']['background']) {
   if (format === 'png') return fs.readFileSync(png);
   if (format === 'webp') return sharp(png).webp({ quality: 90, alphaQuality: 100 }).toBuffer();
-  return sharp(png).flatten({ background: background === 'transparent' ? BACKGROUND_HEX.white : BACKGROUND_HEX[background] }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
+  return sharp(png).flatten({ background: background === 'transparent' || background === 'original' ? BACKGROUND_HEX.white : BACKGROUND_HEX[background] }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 const EXT: Record<OutputFormat, string> = { png: 'png', webp: 'webp', jpeg: 'jpg' };
 
