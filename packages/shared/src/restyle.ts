@@ -77,6 +77,14 @@ export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
  * only read by the model, and the figure is a new one inspired by it. */
 export const WHOLE_DENOISE = 1;
 export const WHOLE_ASPECT = 2 / 3;
+/** The shapes a whole figure may be drawn on: width to height. 2:3 is tall (a figure standing), 3:2 is wide. */
+export type Ratio = '2:3' | '3:2';
+export const RATIOS: { value: Ratio; label: string; aspect: number }[] = [
+  { value: '2:3', label: '2:3 (tall)', aspect: 2 / 3 },
+  { value: '3:2', label: '3:2 (wide)', aspect: 3 / 2 },
+];
+/** The aspect a whole figure is drawn at; a result from before the choice was 2:3. */
+export const wholeAspect = (o: { ratio?: Ratio }) => RATIOS.find((r) => r.value === o.ratio)?.aspect ?? WHOLE_ASPECT;
 
 /** The art styles FLUX only gets right from a picture in that style, as well as words: USO (ByteDance's
  * style reference) takes the look of the picture (color, brushwork, texture), not what it shows.
@@ -130,13 +138,15 @@ export interface RestyleOptions {
   notes: string;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for 2D and 3D illustrations. */
   whole: boolean;
+  /** The shape of the canvas a whole figure is drawn on. */
+  ratio: Ratio;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
   madeFor: Target;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, madeFor: 'auto',
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto',
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -296,6 +306,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
+  o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto') : 'auto';
   return o;
 }

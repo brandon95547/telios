@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, WHOLE_ASPECT, WHOLE_DENOISE, findStyle, qualityOf, typeInfo, wantsStyleReference, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, WHOLE_DENOISE, findStyle, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
@@ -40,11 +40,11 @@ export function drawnSizes(picture: [number, number], o: Pick<RestyleResult['opt
   return { w, h, tw, th };
 }
 
-/** The sizes a whole figure (Draw it whole) is drawn and kept at: a 2:3 canvas, whatever shape the picture was. "Same size as
+/** The sizes a whole figure (Draw it whole) is drawn and kept at: a 2:3 or 3:2 canvas as chosen, whatever shape the picture was. "Same size as
  * the original" has no meaning here (the shape is new, and a small source would shrink a whole figure to a few hundred
  * pixels: a face of 40), so it keeps what was drawn. */
-export function wholeSizes(o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'>) {
-  const [w, h] = drawSize(WHOLE_ASPECT, qualityOf(o).size);
+export function wholeSizes(o: Pick<RestyleResult['options'], 'size' | 'type' | 'quality'> & { ratio?: RestyleResult['options']['ratio'] }) {
+  const [w, h] = drawSize(wholeAspect(o), qualityOf(o).size);
   const [tw, th] = targetSize(o.size === 'original' ? 'drawn' : o.size, [w, h]);
   return { w, h, tw, th };
 }

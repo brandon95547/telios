@@ -57,6 +57,11 @@ test('a whole figure is drawn on a 2:3 canvas, whatever shape the picture was, a
   const original = wholeSizes({ ...o, size: 'original' });
   assert.deepEqual([original.tw, original.th], [drawn.w, drawn.h], 'what was drawn is kept');
   assert.equal(wholeSizes({ ...o, size: '2x' }).tw, drawn.w * 2);
+  // 3:2 is the same canvas turned on its side
+  const wide = wholeSizes({ ...o, ratio: '3:2' });
+  assert.deepEqual([wide.w, wide.h], [1568, 1040], 'High, wide');
+  assert.equal(cleanOptions({ ratio: '3:2' }).ratio, '3:2');
+  assert.equal(cleanOptions({ ratio: '1:1' }).ratio, '2:3', 'an unknown shape is the default');
   assert.equal(WHOLE_DENOISE, 1, 'from nothing: a close-up cropped into a tall canvas keeps being a close-up at 0.9');
 });
 

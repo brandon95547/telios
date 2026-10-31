@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, TARGETS, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, RATIOS, TARGETS, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -162,6 +162,12 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
           </label>}
         </div>
         {type.vector && !byModel && <div className="sub">{type.label} also comes as an SVG.</div>}
+        {!byModel && options.whole && !noWhole && <label className="field">
+          <div className="label">Ratio</div>
+          <select value={options.ratio} onChange={(e) => set('ratio', e.target.value as RestyleOptions['ratio'])}>
+            {RATIOS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </label>}
         {!byModel && <label className="field">
           <div className="label">Quality</div>
           <select value={options.quality} onChange={(e) => set('quality', e.target.value as RestyleOptions['quality'])}>
