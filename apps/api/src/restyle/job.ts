@@ -125,7 +125,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       { label: 'Preparing the picture', seconds: 2 },
       ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
       ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
-      { label: 'Drawing', seconds: 28 },
+      { label: 'Drawing', seconds: Math.round(28 * quality.steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
       ...(typeInfo(o.type).vector ? [{ label: 'Tracing to SVG', seconds: 12 }] : []),

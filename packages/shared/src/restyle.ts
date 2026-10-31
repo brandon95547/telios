@@ -45,9 +45,9 @@ export const drawnByModel = (type: OutputType) => type === 'vector';
 export type Quality = 'auto' | 'fast' | 'standard' | 'high';
 /** The pixel budget (a square of this side) and sampler steps of each quality. */
 export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: number; steps: number }[] = [
-  { value: 'fast', label: 'Fast', size: 768, steps: 16 },
-  { value: 'standard', label: 'Standard', size: 1024, steps: 20 },
-  { value: 'high', label: 'High', size: 1280, steps: 28 },
+  { value: 'fast', label: 'Fast', size: 768, steps: 24 },
+  { value: 'standard', label: 'Standard', size: 1024, steps: 32 },
+  { value: 'high', label: 'High', size: 1280, steps: 48 },
 ];
 
 /** How far the redrawing may move from the original: the sampler's denoise, for each type.

@@ -25,7 +25,7 @@ test('the preview says what ComfyUI was given, in plain words', () => {
 
 test('a result from before the settings were kept says only what is known, and invents nothing', () => {
   const rows = rowsOf(settingRows({ options: options({ style: 'fauvism', background: 'transparent', format: 'webp', size: 'original' }), seed: 7, size: [373, 350] }));
-  assert.equal(rows['Drawn at'], 'Standard: 1024 px, 20 steps');
+  assert.equal(rows['Drawn at'], 'Standard: 1024 px, 32 steps');
   assert.equal(rows['Follow the original'], 'Balanced');
   assert.equal(rows['Seed'], '7');
   assert.equal(rows['Background'], 'Transparent');
