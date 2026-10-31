@@ -25,6 +25,9 @@ export type KeyColor = 'green' | 'blue';
 export const KEY_HEX: Record<KeyColor, string> = { green: '#00ff00', blue: '#0000ff' };
 const KEYED = (color: KeyColor) => `Isolated on a solid flat pure bright ${color} (${KEY_HEX[color].toUpperCase()}) background, one uniform color from edge to edge, with no gradient, no floor, no wall and no cast shadow. The subject floats in empty space with nothing beneath it, and is lit by neutral white light with no ${color} reflected on it.`;
 const BACKGROUND = 'Isolated on a plain pure white background.';
+// Draw it whole: the figure is described in detail, and the ground is asked for so that it can be cut out (this wording, with
+// "scenery" and the even light, gave a plain white ground when tried by hand)
+const BARE_WHOLE = 'The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
 /** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. */
@@ -43,7 +46,7 @@ export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor
     parts.push(`${name} themed, with ${name} motifs and ornament.`);
   }
   if (o.notes) parts.push(o.notes.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.'));
-  parts.push(o.background === 'white' ? BACKGROUND : key ? KEYED(key) : BARE_BACKGROUND);
+  parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);
   return parts.join(' ');
 }
 

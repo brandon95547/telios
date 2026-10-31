@@ -68,9 +68,12 @@ model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 
 
 **Draw it whole** (a switch for 2D and 3D illustrations, instead of Complete the figure) redraws a figure
 shown in part (a bust, a half figure) as the whole figure, standing, head to feet: the model reads the
-picture and writes one sentence describing the figure full-length (what it is and is made of, its
-headdress, which way it faces, its clothes and colors, how it ends: a statue on a low base, a living
-figure on the ground), and that sentence is the redraw's prompt, on a taller 2:3 canvas, drawn from
+picture and writes one detailed paragraph (120 to 180 words): the visible part described as exactly as it
+is (colors, materials, pose and facing, every item with its own detail: headdress, face and expression,
+beard, collars, armor, jewelry, clothing), then the part that is cut off continued to match it (same
+materials, ornament and style, down to the feet: a statue on a low base, a living figure on the ground).
+That paragraph is the redraw's prompt (the detail of the description is the detail of the figure, and the
+only thing that ties the figure to the picture), on a taller 2:3 canvas, drawn from
 nothing (denoise 1; Follow the original does not apply). Nothing is added to the picture: no cutout of a
 base, no inpaint, a single draw. It is a new figure inspired by the picture (its headdress, clothes and
 colors, not its face), which is the point. Tried at small sizes on a close-up of a pharaoh, the usual

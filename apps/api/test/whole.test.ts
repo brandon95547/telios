@@ -23,11 +23,14 @@ test('Draw it whole is for 2D and 3D illustrations only, off by default, and ins
   assert.equal(cleanOptions({ type: 'render3d', complete: true }).complete, true);
 });
 
-test('the model\'s sentence is its first line, without quotes', () => {
+test('the model\'s paragraph is its lines joined, without quotes, and cut at a sentence if it is too long', () => {
   assert.equal(parseWhole('"A full-length statue of a pharaoh stands facing right."\n'), 'A full-length statue of a pharaoh stands facing right.');
-  assert.equal(parseWhole('\n  A full-length figure.\nIgnore this.'), 'A full-length figure.');
+  assert.equal(parseWhole('\n  A highly detailed statue.\nHe wears a collar.  \n'), 'A highly detailed statue. He wears a collar.');
   assert.equal(parseWhole('   '), null);
-  assert.equal(parseWhole('x'.repeat(900))!.length, 600);
+  const long = Array.from({ length: 80 }, (_, i) => `Sentence number ${i} is here.`).join(' ');
+  const cut = parseWhole(long)!;
+  assert.ok(cut.length <= 1400 && cut.endsWith('is here.'), 'cut at the end of a sentence');
+  assert.equal(parseWhole('x'.repeat(2000))!.length, 1400, 'with no sentence to cut at, at the limit');
 });
 
 test('without a model nothing is described: no call is made', async () => {
@@ -40,8 +43,9 @@ test('the sentence is the redraw\'s opening, with the style, theme and extra wor
   assert.match(p, /^A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base\. /);
   assert.doesNotMatch(p, /referenced image|variation/, 'it does not ask for a variation of the picture');
   assert.match(p, /black granite\./);
-  assert.match(p, /pure white background, with no floor, no wall and no cast shadow\.$/);
-  // without it, the type's own opening, as before
+  assert.match(p, /The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white\.$/);
+  // without it, the type's own opening and ground, as before
+  assert.match(restylePrompt(o, 'ignored'), /Isolated on a plain pure white background, with no floor, no wall and no cast shadow\.$/);
   assert.match(restylePrompt(o, 'ignored'), /^Using the referenced image as inspiration, create a 3D variation of it\./);
 });
 
