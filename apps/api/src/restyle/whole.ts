@@ -16,6 +16,12 @@ Write one paragraph of 5 or 6 sentences, 120 to 180 words, in this order: (1) "A
 Do not describe the background, the lighting or the camera, and do not mention the picture. No quotes, no lists, nothing else.
 Example answer: A highly detailed grayscale full-length statue of an ancient Egyptian pharaoh standing upright in right-facing side profile, shown from head to feet with the whole body visible. On his head is a striped nemes headdress with a raised cobra emblem at the forehead and long banded lappets; his face is sharply sculpted and realistic, with a calm, stern expression, strong regal features and a long braided ceremonial beard. Across his neck and shoulders lie layered collars and ornate ceremonial armor of finely engraved scales, with decorative jewelry. Below the chest the body continues in the same dark engraved stone, in a pleated kilt, with bare feet standing on a low rectangular stone base. The overall look is highly intricate and statuesque, with finely engraved textures and a dramatic ancient-Egyptian royal aesthetic.`;
 
+/** What the model is told when a look was asked for: the character is redrawn as that look would draw it, not described as it
+ * is and given the look at the end (a description of the original, with the look added, drew the original). */
+export const LOOK_RULES = (look: string) => `The figure is not to be drawn as it looks in the picture: it is to be drawn in this look, which the user chose:
+${look}
+Keep who or what the figure is, its pose, which way it faces and its main items (headdress, collar, clothing, props), and change everything the look decides: its shapes, proportions, colors, materials, linework, textures and rendering, described as that look would make them. Write the whole paragraph as a description of a figure drawn in this look, so that the look runs through every sentence and its own words are used, and say in the last sentence what the look is. Where this conflicts with "as it is in the picture" or with the example, this wins.`;
+
 /** The model's paragraph, cleaned: its lines joined, no quotes, no longer than the prompt can use. Null when empty. */
 export function parseWhole(text: string): string | null {
   const lines = text.trim().split('\n').map((l) => l.trim()).filter(Boolean);
@@ -29,7 +35,7 @@ export function parseWhole(text: string): string | null {
 const MAX_LENGTH = 1400;
 
 /** What the whole figure looks like, in a short detailed paragraph, from the picture; null when no model is set up or it could not answer. */
-export async function readWholeFigure(png: Buffer, signal?: AbortSignal): Promise<string | null> {
+export async function readWholeFigure(png: Buffer, signal?: AbortSignal, look: string[] = []): Promise<string | null> {
   if (!provider().provider) return null;
   try {
     const res = await chat({
@@ -37,8 +43,8 @@ export async function readWholeFigure(png: Buffer, signal?: AbortSignal): Promis
       effort: 'low',
       signal,
       messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: [imagePart(await forModel(png, 768)), textPart('Describe this figure full-length.')] },
+        { role: 'system', content: look.length ? `${SYSTEM}\n${LOOK_RULES(look.join(' '))}` : SYSTEM },
+        { role: 'user', content: [imagePart(await forModel(png, 768)), textPart(look.length ? `Describe this figure full-length, drawn in the look given.` : 'Describe this figure full-length.')] },
       ],
     });
     return parseWhole(res.message.content ?? '');

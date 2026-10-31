@@ -30,12 +30,9 @@ const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_WHOLE = 'The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
-/** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. */
-export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor, lead?: string) {
-  if (o.type === 'vector') throw new Error('A flat SVG is drawn by the model, not by ComfyUI: it has no prompt.');
-  // a phrase the model wrote starts with a capital; inside the sentence it should not
-  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
-  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : TYPE_WORDS[o.type](what)];
+/** The look the user asked for, in sentences: the art style, the medium, the theme and their own words. */
+export function lookWords(o: RestyleOptions): string[] {
+  const parts: string[] = [];
   const style = findStyle(o.style);
   if (style) parts.push(`In this style: ${style.words}.`);
   const medium = o.type === 'illustration' ? findMedium(o.medium) : null;
@@ -46,6 +43,18 @@ export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor
     parts.push(`${name} themed, with ${name} motifs and ornament.`);
   }
   if (o.notes) parts.push(o.notes.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.'));
+  return parts;
+}
+
+/** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. That sentence
+ * is written in the look already (the model is given it, to describe the character as that look would draw it), so the
+ * look is not added after it: words tacked on to a description of the original did not change what was drawn. */
+export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor, lead?: string) {
+  if (o.type === 'vector') throw new Error('A flat SVG is drawn by the model, not by ComfyUI: it has no prompt.');
+  // a phrase the model wrote starts with a capital; inside the sentence it should not
+  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
+  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : TYPE_WORDS[o.type](what)];
+  if (!lead) parts.push(...lookWords(o));
   // with no ground chosen the picture keeps its own, and the prompt says nothing about it; a whole figure is still asked for
   // on a plain white one (it has none of its own, and is drawn from nothing)
   if (o.background !== 'original' || lead) parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);

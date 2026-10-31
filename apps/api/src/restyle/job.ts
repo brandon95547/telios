@@ -12,7 +12,7 @@ import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { KEY_HEX, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
+import { KEY_HEX, lookWords, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readSubject } from './subject.ts';
 import { readWholeFigure } from './whole.ts';
@@ -147,7 +147,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let lead: string | undefined;
     if (o.whole) {
       stage('Describing the whole figure');
-      lead = (await readWholeFigure(source, signal)) ?? undefined;
+      lead = (await readWholeFigure(source, signal, lookWords(o))) ?? undefined;
       if (!lead) throw new Error('Draw it whole needs the model to describe the figure, and it could not: try again.');
     }
     const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined, lead);

@@ -8,8 +8,8 @@ process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-whole-te
 process.env.TELIOS_PROVIDER = 'none';   // no model: nothing is described
 
 const { DEFAULT_OPTIONS, WHOLE_ASPECT, WHOLE_DENOISE, cleanOptions, settingRows } = await import('@telios/shared');
-const { parseWhole, readWholeFigure } = await import('../src/restyle/whole.ts');
-const { restylePrompt } = await import('../src/restyle/prompt.ts');
+const { LOOK_RULES, parseWhole, readWholeFigure } = await import('../src/restyle/whole.ts');
+const { lookWords, restylePrompt } = await import('../src/restyle/prompt.ts');
 const { wholeSizes } = await import('../src/restyle/job.ts');
 
 test('Draw it whole is for 2D and 3D illustrations only, and off by default', () => {
@@ -34,12 +34,14 @@ test('without a model nothing is described: no call is made', async () => {
   assert.equal(await readWholeFigure(Buffer.from('not a picture')), null);
 });
 
-test('the sentence is the redraw\'s opening, with the style, theme and extra words still after it', () => {
-  const o = cleanOptions({ type: 'render3d', whole: true, theme: 'egyptian', notes: 'black granite', background: 'transparent' });
+test('the sentence is the redraw\'s opening, and carries the look itself: none is added after it', () => {
+  const o = cleanOptions({ type: 'render3d', whole: true, theme: 'egyptian', style: 'abstract', notes: 'black granite', background: 'transparent' });
   const p = restylePrompt(o, 'ignored', undefined, 'A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base');
   assert.match(p, /^A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base\. /);
   assert.doesNotMatch(p, /referenced image|variation/, 'it does not ask for a variation of the picture');
-  assert.match(p, /black granite\./);
+  assert.doesNotMatch(p, /In this style|themed|black granite/, 'the look was given to the model that wrote the sentence');
+  assert.deepEqual(lookWords(o).length, 3 + 0, 'style, theme and the user\'s words');
+  assert.match(lookWords(o).join(' '), /black granite\./);
   assert.match(p, /The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white\.$/);
   // without it, the type's own opening and ground, as before
   assert.match(restylePrompt(o, 'ignored'), /Isolated on a plain pure white background, with no floor, no wall and no cast shadow\.$/);
@@ -72,4 +74,10 @@ test('the preview says it was drawn whole, and from what sentence', () => {
   assert.equal(rows['Figure asked for'], 'A full-length statue.');
   const plain = Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'render3d' }, settings: { ...settings, whole: undefined }, seed: 1, size: [416, 624] } as any).map((r) => [r.label, r.value]));
   assert.equal(plain['Draw it whole'], undefined);
+});
+
+test('a look asked for is given to the model that describes the figure, as a figure drawn in it', () => {
+  const rules = LOOK_RULES('In this style: abstract art, fragmented shapes.');
+  assert.match(rules, /abstract art, fragmented shapes/);
+  assert.match(rules, /not to be drawn as it looks in the picture/);
 });
