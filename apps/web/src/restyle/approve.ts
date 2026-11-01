@@ -80,11 +80,19 @@ export async function folderToSave(): Promise<Folder | null> {
 /** What is saved of a result, and from where. */
 export const fileOf = (r: RestyleResult) => restyle.downloadOne(r.id, r.drawing ? 'package' : typeInfo(r.options.type).vector && r.files?.svg ? 'svg' : undefined);
 
-/** The name the server gave a download. */
+/** A name the browser's folder access will take: it refuses a path mark, a control character (a picture's name that came
+ * out of a zip with its emoji misread carries C1 ones, which show as nothing), an invisible space, and a name that starts
+ * or ends with a dot or a space. */
+export function fileSafe(name: string, fallback = 'picture') {
+  const clean = name.replace(/[\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060\ufeff]+/g, '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').replace(/^[.\s]+|[.\s]+$/g, '');
+  return clean.slice(0, 180) || fallback;
+}
+
+/** The name the server gave a download, made safe to save under. */
 export function nameOf(disposition: string | null, fallback: string) {
   const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition ?? '');
-  if (!m) return fallback;
-  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+  if (!m) return fileSafe(fallback);
+  try { return fileSafe(decodeURIComponent(m[1])); } catch { return fileSafe(m[1]); }
 }
 
 /** `name`, or "name (2)", "name (3)"… the first that is not in the folder yet. */

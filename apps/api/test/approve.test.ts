@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { fileOf, nameOf, saveResults } = await import('../../web/src/restyle/approve.ts');
+const { fileOf, fileSafe, nameOf, saveResults } = await import('../../web/src/restyle/approve.ts');
 
 /** A folder that keeps what is written to it, as the browser's does. */
 function folder() {
@@ -29,6 +29,15 @@ test('the name the server gave a download is the name it is saved under', () => 
   assert.equal(nameOf('attachment; filename="Gold%20Frame-v2.webp"', 'x.png'), 'Gold Frame-v2.webp');
   assert.equal(nameOf('attachment; filename=frame-package.zip', 'x.png'), 'frame-package.zip');
   assert.equal(nameOf(null, 'fallback.png'), 'fallback.png');
+});
+
+test('a name the browser would refuse is made one it takes', () => {
+  // the emoji of a zip's file name, misread as Latin-1: its last byte is a C1 control character
+  assert.equal(fileSafe('_\u00ef\u00b8\u008f_they_couldn_t_burn_me-300w.webp'), '_ï¸_they_couldn_t_burn_me-300w.webp');
+  assert.equal(fileSafe('a/b:c*d?.png'), 'a b c d .png');
+  assert.equal(fileSafe('  ..hidden.. '), 'hidden');
+  assert.equal(fileSafe('\u200b\u0007'), 'picture');
+  assert.equal(nameOf('attachment; filename="x%C2%8Fy.webp"', 'z.png'), 'xy.webp');
 });
 
 test('each result is written into the folder; one already there is not overwritten', async () => {

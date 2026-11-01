@@ -25,7 +25,7 @@ const ZIPS = path.join(os.tmpdir(), 'telios-downloads');
 
 const wrap = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && /^[a-z0-9]+$/.test(x)) : []);
-const cleanName = (s: string) => s.replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'picture';
+const cleanName = (s: string) => s.replace(/[\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060\ufeff]+/g, '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'picture';
 const cleanFolder = (s: string) => s.split('/').filter((p) => p.trim() && p !== '.' && p !== '..').map(cleanName).join('/').slice(0, 200);
 
 /** A picture in the format asked for: PNG as drawn; WebP keeps its transparency; JPEG has none,
