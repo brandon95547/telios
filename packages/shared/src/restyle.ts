@@ -263,11 +263,31 @@ export interface RestyleResult {
    * library, and removed with this result), and what that drawing says of itself. */
   designId?: string;
   drawing?: VectorDrawing;
-  /** A trace: the colors its layers were traced in, dark to light. */
-  traced?: { colors: string[] };
+  /** A trace: the colors its layers were traced in, dark to light; and for a pattern tile, how its repeat was found and cut. */
+  traced?: { colors: string[]; tile?: TraceTile };
   /** Paths inside the data folder. `png` is the preview for a flat SVG; `layout` is its fitting data. */
   files?: { png: string; svg?: string; layout?: string; fitsheet?: string; thumb: string; view: string; original: string };
 }
+
+/** How a pattern tile was cut from its scan (the worker's `tile`). */
+export interface TraceTile {
+  /** The repeat found, in the scan's own pixels, and how its rows sit (half-drop: each row half a cell along, two motifs a cell). */
+  cell: [number, number];
+  lattice: 'grid' | 'half-drop';
+  /** The degrees the scan was turned to level it. */
+  tilt: number;
+  /** How many copies of the repeat in the scan were averaged into the tile. */
+  copies: number;
+  /** How much more the colors change across the tile's edge than just inside it: about 1 is no seam. */
+  seam: number;
+  /** How alike the scan is to itself shifted one repeat across and down (0–1). */
+  strength: [number, number];
+}
+
+/** The worst seam a tile may have and still be called seamless. */
+export const TILE_SEAM_MAX = 1.5;
+/** The weakest self-match (0–1) a tile's repeat may have before it is said to be a loose repeat. */
+export const TILE_STRENGTH_MIN = 0.5;
 
 /** What the model's drawing says of itself, kept with a flat SVG result. */
 export interface VectorDrawing {
@@ -366,6 +386,12 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   }
   if (tracedOnly(o.type)) {
     rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
+    const t = r.traced?.tile;
+    if (t) {
+      rows.push({ label: 'Repeat found', value: `one tile of ${t.cell[0]} × ${t.cell[1]} px of the picture, ${t.lattice === 'half-drop' ? 'staggered (half-drop: each row half a tile along)' : 'straight (a grid)'}, averaged from ${t.copies} copies of it` });
+      rows.push({ label: 'Straightened', value: Math.abs(t.tilt) < 0.1 ? 'it was level' : `turned ${Math.abs(t.tilt)}° ${t.tilt > 0 ? 'back' : 'the other way'} to level it` });
+      rows.push({ label: 'Seam', value: t.seam <= TILE_SEAM_MAX ? 'none: the tile’s edges meet' : `visible (the colors change ${t.seam}× as much across the edge as inside it)` });
+    }
     rows.push({ label: 'Traced as', value: `the picture's own shapes in ${r.traced ? `${r.traced.colors.length} flat colors` : 'a few flat colors'}, one SVG layer each; nothing is redrawn` });
     rows.push({ label: 'Background', value: o.background === 'original' ? 'kept as in the original, a scan\'s margin included' : `${BACKGROUND_LABEL[o.background]}; a scan's margin is cleared` });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });

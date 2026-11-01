@@ -81,6 +81,13 @@ def main(argv=None):
     t.add_argument('--max-colors', type=int, default=8)
     t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')
     t.add_argument('--title', default='Telios')
+    ti = sub.add_parser('tile')
+    ti.add_argument('source')
+    ti.add_argument('outdir')
+    ti.add_argument('--max-colors', type=int, default=8)
+    ti.add_argument('--twins', type=float, default=9.0, help='Lab distance under which two colors are one')
+    ti.add_argument('--blend', type=float, default=5.0, help='Lab distance from the line between two colors under which a color is their blend')
+    ti.add_argument('--title', default='Telios')
     r = sub.add_parser('rebuild')
     r.add_argument('source')
     r.add_argument('outdir')
@@ -140,6 +147,10 @@ def main(argv=None):
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
             out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge))
+        elif args.cmd == 'tile':
+            from .tile import tile
+            os.makedirs(args.outdir, exist_ok=True)
+            out(tile(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend))
         elif args.cmd == 'rebuild':
             from .rebuild import rebuild
             os.makedirs(args.outdir, exist_ok=True)

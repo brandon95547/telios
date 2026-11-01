@@ -64,8 +64,8 @@ async function makeResult(id: string, over: Record<string, unknown> = {}) {
   });
 }
 
-test('a trace comes back as layered SVG in a few flat colors, near colors one, the margin cleared, with its preview', async () => {
-  await makeResult('xtrace1', { madeFor: 'pattern' });
+test('an object trace comes back as layered SVG in a few flat colors, near colors one, the margin cleared, with its preview', async () => {
+  await makeResult('xtrace1');
   await drawTrace('xtrace1', new AbortController().signal);
   const r = getResult('xtrace1')!;
   assert.equal(r.status, 'done', r.error ?? 'no error');
@@ -76,7 +76,7 @@ test('a trace comes back as layered SVG in a few flat colors, near colors one, t
   assert.deepEqual(r.size, [240, 180]);
   const png = await sharp(path.join(resultDir('xtrace1'), 'result.png')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   assert.equal(png.data[3], 0, 'the paper margin is clear');
-  assert.match(r.warning ?? '', /exact repeat/, 'a pattern says it may not tile');
+  assert.equal(r.warning, undefined);
   assert.ok(!fs.existsSync(path.join(resultDir('xtrace1'), 'source.png')), 'the source is not kept');
 });
 
@@ -98,21 +98,83 @@ test('a trace that keeps the original’s ground keeps the margin too', async ()
   assert.equal(png[3], 255, 'the corner is paper, drawn');
 });
 
-test('a trace has an app package, and a pattern’s says it is a tile', async () => {
-  await makeResult('xtrace4', { madeFor: 'pattern' });
-  await drawTrace('xtrace4', new AbortController().signal);
-  const r = getResult('xtrace4')!;
+/** A half-drop pattern scan: motifs (a disc, a bar) in three colors that repeat every 64 × 96 px, on a pale margin, turned `deg` degrees. */
+async function makePattern(id: string, deg = 0, over: Record<string, unknown> = {}) {
+  const dir = resultDir(id);
+  fs.mkdirSync(dir, { recursive: true });
+  const W = 360, H = 480, M = 40;
+  const cw = 64, ch = 96;
+  const raw = Buffer.alloc((W + 2 * M) * (H + 2 * M) * 3, 206);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = x % cw, v = y % ch;
+    let c = [132, 86, 52];
+    for (const [cx, cy] of [[0, 0], [cw / 2, ch / 2]]) {
+      const du = Math.min(Math.abs(u - cx), cw - Math.abs(u - cx)), dv = Math.min(Math.abs(v - cy), ch - Math.abs(v - cy));
+      if (du * du + dv * dv < (cw * 0.17) ** 2) c = [60, 70, 120];
+      else if (du < cw * 0.04 && dv < ch * 0.3) c = [200, 175, 125];
+    }
+    const i = ((y + M) * (W + 2 * M) + x + M) * 3;
+    raw[i] = c[0]; raw[i + 1] = c[1]; raw[i + 2] = c[2];
+  }
+  let img = sharp(raw, { raw: { width: W + 2 * M, height: H + 2 * M, channels: 3 } });
+  if (deg) img = sharp(await img.png().toBuffer()).rotate(deg, { background: '#cecabf' });
+  fs.writeFileSync(path.join(dir, 'source.png'), await img.png().toBuffer());
+  await sharp({ create: { width: 40, height: 30, channels: 3, background: '#fff' } }).webp().toFile(path.join(dir, 'original.webp'));
+  saveResult({
+    id, batchId: 'b1', inputId: 'i1', inputName: 'Lattice scan', folder: '', variation: 1, status: 'queued', createdAt: new Date().toISOString(),
+    options: cleanOptions({ type: 'trace', madeFor: 'pattern', background: 'transparent', ...over }),
+  });
+}
+
+test('a pattern tile is cut from the scan’s repeat: straightened, one exact cell, seamless, with its fitting data', async () => {
+  await makePattern('xtile1', 1.4);
+  await drawTrace('xtile1', new AbortController().signal);
+  const r = getResult('xtile1')!;
+  assert.equal(r.status, 'done', r.error ?? 'no error');
+  const t = r.traced!.tile!;
+  assert.ok(Math.abs(t.cell[0] - 64) / 64 < 0.02 && Math.abs(t.cell[1] - 96) / 96 < 0.02, `cell ${t.cell}`);
+  assert.ok(Math.abs(Math.abs(t.tilt) - 1.4) < 0.35, `tilt ${t.tilt}`);
+  assert.equal(t.lattice, 'half-drop');
+  assert.ok(t.seam < 1.5, `seam ${t.seam}`);
+  const svg = fs.readFileSync(path.join(resultDir('xtile1'), 'result.svg'), 'utf8');
+  const [w, h] = r.size!;
+  assert.match(svg, new RegExp(`viewBox="0 0 ${Math.round(t.cell[0] * 2)} ${Math.round(t.cell[1] * 2)}"`), 'the viewBox is the tile');
+  const layout = JSON.parse(fs.readFileSync(path.join(resultDir('xtile1'), 'layout.json'), 'utf8'));
+  assert.deepEqual([layout.form, layout.lattice], ['tile', 'half-drop']);
+  assert.ok(r.files?.layout && r.files.fitsheet);
+  assert.equal(r.warning, undefined);
+  assert.ok(w > 0 && h > 0);
+  const rows = Object.fromEntries(settingRows(r).map((x) => [x.label, x.value]));
+  assert.match(rows['Repeat found'], /half-drop/);
+  assert.match(rows['Straightened'], /turned 1\.\d/);
+  assert.match(rows['Seam'], /none/);
+});
+
+test('a pattern tile’s app package says it is a tile, with its layout and fit sheet', async () => {
+  await makePattern('xtile2');
+  await drawTrace('xtile2', new AbortController().signal);
+  const r = getResult('xtile2')!;
   assert.ok(hasPackage(r));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-pkg-'));
   const files = await writePackage(r, 'lattice-scan', work);
   const manifest = JSON.parse(fs.readFileSync(files.find((f) => f.name.endsWith('.json'))!.src, 'utf8'));
   assert.equal(manifest.piece, 'tile');
   assert.equal(manifest.kind, 'pattern');
-  assert.equal(manifest.layers.length, 3);
-  assert.deepEqual(manifest.size, [480, 360], 'the size of the SVG’s viewBox: a small picture is traced at twice its size');
+  assert.equal(manifest.layout.form, 'tile');
+  assert.equal(manifest.layout.lattice, 'half-drop');
+  assert.deepEqual(manifest.size, manifest.layout.size);
   assert.equal(manifest.appReady, null, 'a trace is not measured for an app');
-  assert.ok(files.some((f) => f.name.endsWith('.svg')));
+  assert.ok(files.some((f) => f.name.endsWith('.svg')) && files.some((f) => f.name.endsWith('.fitsheet.png')));
   assert.ok(!hasPackage({ files: { png: 'x', svg: 'x', thumb: '', view: '', original: '' } }), 'clip art is no package');
+});
+
+test('a picture that does not repeat is refused as a pattern, in plain words', async () => {
+  await makeResult('xtile3', { madeFor: 'pattern' });
+  await drawTrace('xtile3', new AbortController().signal);
+  const r = getResult('xtile3')!;
+  assert.equal(r.status, 'failed');
+  assert.match(r.error ?? '', /No repeating pattern was found/);
+  assert.doesNotMatch(r.error ?? '', /ValueError/);
 });
 
 test('a trace that fails is told plainly and keeps nothing', async () => {
