@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, RATIOS, TARGETS, drawnByModel, styleFits, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -29,13 +29,17 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
 }) {
   const type = typeInfo(options.type);
   const byModel = drawnByModel(options.type);
+  const traced = tracedOnly(options.type);
+  // what is redrawn by ComfyUI (the rest is drawn by a model or only traced)
+  const redraw = !byModel && !traced;
   const pictureLed = PICTURE_LED_TYPES.includes(options.type);
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (t !== 'illustration') set('medium', '');
-    if (drawnByModel(t)) set('theme', '');
-    if (!drawnByModel(t)) set('madeFor', 'auto');
+    if (drawnByModel(t) || tracedOnly(t)) set('theme', '');
+    if (tracedOnly(t)) set('variations', 1);
+    set('madeFor', drawnByModel(t) ? options.madeFor : tracedOnly(t) ? 'object' : 'auto');
     if (!PICTURE_LED_TYPES.includes(t)) {
       set('whole', false);
       if (options.background === 'original') set('background', 'transparent');   // clip art and line art are cut out of their ground to be traced
@@ -66,6 +70,15 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               : <>Drawn as new vector art by {health ? `${health.model.label} ${health.model.name}` : 'the model'}, not by ComfyUI: a few minutes and a few cents a picture, in a few renders it checks itself. It reads what each picture is (a frame, a border, a corner, an ornament) and how it is colored. The SVG has one layer per color{' '}and, for a frame or border, the data that fits it to any page.</>}
           </div>
         )}
+        {traced && (
+          <label className="field">
+            <div className="label">Made for</div>
+            <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>
+              {TRACE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace has no fitting data, so it cannot be a frame, a border or a corner. Its app package says what it is made for.{options.madeFor === 'pattern' ? ' It tiles without a seam only if the picture is one exact repeat.' : ''}</div>
+          </label>
+        )}
         {byModel && (
           <label className="field">
             <div className="label">Made for</div>
@@ -75,7 +88,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <div className="sub">{TARGETS.find((t) => t.value === options.madeFor)?.hint}{options.madeFor === 'auto' ? '' : ' It is drawn that way and checked for it.'} Every drawing is measured for an app (nothing cut off, a clear ground, lines that hold, few colors) and comes with an app package.</div>
           </label>
         )}
-        {!byModel && <label className="field">
+        {redraw && <label className="field">
           <div className="label">Illustration style</div>
           <select value={options.style} onChange={(e) => set('style', e.target.value)}>
             <option value="">None selected</option>
@@ -102,7 +115,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             </select>
           </label>
         )}
-        {!byModel && <label className="field">
+        {redraw && <label className="field">
           <div className="label">Theme</div>
           <select value={options.theme} onChange={(e) => set('theme', e.target.value)}>
             <option value="">None selected</option>
@@ -113,7 +126,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             ))}
           </select>
         </label>}
-        {!byModel && <div className="field">
+        {redraw && <div className="field">
           <div className="label">Follow the original</div>
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
@@ -124,29 +137,30 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             {noWhole && <div className="sub warn">{noWhole}</div>}
           </div>
         )}
-        <div className="field">
+        {traced && <div className="sub">Traced as it is, in seconds, by the worker: neither ComfyUI nor a model draws anything, so the shapes and layout stay exactly the original's. A scan's few printed colors become flat layers (colors that differ only by the print's grain are one). It is the same every time, so there is one version.</div>}
+        {!traced && <div className="field">
           <div className="label">Versions of each picture</div>
           <Seg label="Versions of each picture" value={options.variations} onChange={(v) => set('variations', v)} options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))} />
           {byModel && <div className="sub">Each version is a separate drawing, and costs what one does.</div>}
-        </div>
-        <label className="field">
+        </div>}
+        {!traced && <label className="field">
           <div className="label">{byModel ? 'Extra words for the model' : 'Extra words for the prompt'}</div>
           <input className="text" value={options.notes} maxLength={300} placeholder={byModel ? 'Optional: one ink, keep the rosettes, a deeper foot…' : 'Optional: gold and deep red, thin lines…'} onChange={(e) => set('notes', e.target.value)} />
-        </label>
+        </label>}
       </section>
 
       <section className="panel-section">
         <h2><span className="step">3</span> Processing options</h2>
         <div className="two">
           <label className="field">
-            <div className="label">{byModel ? 'Preview format' : 'Output format'}</div>
+            <div className="label">{byModel || traced ? 'Preview format' : 'Output format'}</div>
             <select value={options.format} onChange={(e) => set('format', e.target.value as RestyleOptions['format'])}>
               <option value="png">PNG{options.background === 'transparent' ? ' (transparent)' : ''}</option>
               <option value="webp">WebP{options.background === 'transparent' ? ' (transparent)' : ''}</option>
               <option value="jpeg">JPEG</option>
             </select>
           </label>
-          {!byModel && <label className="field">
+          {redraw && <label className="field">
             <div className="label">Size</div>
             <select value={options.size} onChange={(e) => set('size', e.target.value as RestyleOptions['size'])}>
               <option value="drawn">As drawn</option>
@@ -156,14 +170,14 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             </select>
           </label>}
         </div>
-        {type.vector && !byModel && <div className="sub">{type.label} also comes as an SVG.</div>}
-        {!byModel && options.whole && !noWhole && <label className="field">
+        {type.vector && redraw && <div className="sub">{type.label} also comes as an SVG.</div>}
+        {redraw && options.whole && !noWhole && <label className="field">
           <div className="label">Ratio</div>
           <select value={options.ratio} onChange={(e) => set('ratio', e.target.value as RestyleOptions['ratio'])}>
             {RATIOS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </label>}
-        {!byModel && <label className="field">
+        {redraw && <label className="field">
           <div className="label">Quality</div>
           <select value={options.quality} onChange={(e) => set('quality', e.target.value as RestyleOptions['quality'])}>
             <option value="auto">Auto ({quality.label.toLowerCase()} for {type.label.toLowerCase()})</option>
@@ -173,18 +187,19 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         <label className="field">
           <div className="label">Background</div>
           <select value={options.background} onChange={(e) => set('background', e.target.value as RestyleOptions['background'])}>
-            {pictureLed && <option value="original">Keep original</option>}
+            {(pictureLed || traced) && <option value="original">Keep original</option>}
             <option value="transparent">Transparent</option>
             <option value="white">White</option>
             <option value="black">Black</option>
             <option value="green">Green</option>
           </select>
+          {traced && <div className="sub">{options.background === 'original' ? 'Nothing is cleared: a scan\'s margin is traced with the picture.' : 'A scan\'s paper margin is cleared; the design keeps its own ground.'}</div>}
           {pictureLed && <div className="sub">{options.background === 'original' ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it.' : 'The subject is cut out of the picture and put on this background.'}</div>}
           {options.background !== 'white' && options.background !== 'original' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
             <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
         </label>
-        {!byModel && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
+        {redraw && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
           hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />}
         <Toggle label="Process every picture" on={batchAll} onChange={setBatchAll} hint="Off: only the pictures you tick." />
       </section>

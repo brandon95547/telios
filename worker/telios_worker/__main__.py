@@ -79,6 +79,7 @@ def main(argv=None):
     t.add_argument('--mode', default='full', choices=['full', 'neutral', 'one-ink'])
     t.add_argument('--keep-background', action='store_true')
     t.add_argument('--max-colors', type=int, default=8)
+    t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')
     t.add_argument('--title', default='Telios')
     r = sub.add_parser('rebuild')
     r.add_argument('source')
@@ -138,7 +139,7 @@ def main(argv=None):
             from .trace import trace
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
-            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title))
+            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge))
         elif args.cmd == 'rebuild':
             from .rebuild import rebuild
             os.makedirs(args.outdir, exist_ok=True)

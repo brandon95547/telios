@@ -9,9 +9,9 @@ export { CATALOG };
 
 /** What a picture is redrawn as. Clip art and line art come back as SVG too. A flat SVG is not drawn
  * by ComfyUI: a model writes it as a drawing program (the Vector redraw's loop). */
-export type OutputType = 'clipart' | 'lineart' | 'illustration' | 'render3d' | 'vector';
+export type OutputType = 'clipart' | 'lineart' | 'illustration' | 'render3d' | 'vector' | 'trace';
 /** The types ComfyUI draws. */
-export type ComfyType = Exclude<OutputType, 'vector'>;
+export type ComfyType = Exclude<OutputType, 'vector' | 'trace'>;
 
 export interface OutputTypeInfo {
   value: OutputType;
@@ -36,11 +36,30 @@ export const OUTPUT_TYPES: OutputTypeInfo[] = [
     styles: ['realism', 'surrealism', 'abstract', 'minimalism', 'art-nouveau', 'art-deco', 'classical', 'cartoon', 'anime', 'comic-book'] },
   // Drawn by the model, not ComfyUI: no art style or theme, and no sampler quality (it is only a
   // placeholder here, for the Quality field it does not show).
+  // Traced, not drawn: the picture's own shapes and layout, in a few flat colors, with no redraw, so neither ComfyUI nor a model.
+  { value: 'trace', label: 'Trace', group: 'Vector', hint: 'The picture itself traced into flat colors, one SVG layer per color: its shapes and layout kept exactly, with no redraw', vector: true, quality: 'fast', styles: [] },
   { value: 'vector', label: 'Flat SVG', group: 'Vector', hint: 'New flat vector art for a frame, border, corner or ornament, one layer per color, with the data that fits it to any page', vector: true, quality: 'fast', styles: [] },
 ];
 
 /** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI. */
 export const drawnByModel = (type: OutputType) => type === 'vector';
+
+/** Whether the picture is traced as it is (the worker's trace), not redrawn by ComfyUI or a model. */
+export const tracedOnly = (type: OutputType) => type === 'trace';
+
+/** What a trace can be made for: it has the picture's shapes but no fitting data, so a frame, a border or a corner
+ * (which an app fits to a page by it) cannot be. An object is the default. */
+export const TRACE_TARGETS = TARGETS.filter((t) => t.value === 'object' || t.value === 'pattern');
+
+/** Whether a result can be taken as an app package (the SVG with its manifest): a flat SVG, or a trace. */
+export const hasPackage = (r: Pick<RestyleResult, 'drawing' | 'traced' | 'files'>) => !!(r.files?.svg && (r.drawing || r.traced));
+
+/** How far apart two of a traced picture's own colors must be (Lab distance) to stay two: a scan's browns that differ
+ * only by the print's grain, or by the blend where a dark line meets them, become one. Tried on a printed Islamic
+ * lattice: 12 left seven layers, 16 five, 20 its four colors. */
+export const TRACE_MERGE = 20;
+/** The most colors a trace starts from, before near ones are merged. */
+export const TRACE_MAX_COLORS = 8;
 
 export type Quality = 'auto' | 'fast' | 'standard' | 'high';
 /** The pixel budget (a square of this side) and sampler steps of each quality. */
@@ -244,6 +263,8 @@ export interface RestyleResult {
    * library, and removed with this result), and what that drawing says of itself. */
   designId?: string;
   drawing?: VectorDrawing;
+  /** A trace: the colors its layers were traced in, dark to light. */
+  traced?: { colors: string[] };
   /** Paths inside the data folder. `png` is the preview for a flat SVG; `layout` is its fitting data. */
   files?: { png: string; svg?: string; layout?: string; fitsheet?: string; thumb: string; view: string; original: string };
 }
@@ -294,20 +315,24 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.type = pick(raw?.type, OUTPUT_TYPES.map((t) => t.value), o.type);
   o.style = typeof raw?.style === 'string' && styleFits(o.type, raw.style) ? raw.style : '';
   o.medium = o.type === 'illustration' && typeof raw?.medium === 'string' && findMedium(raw.medium) ? raw.medium : '';
-  o.theme = !drawnByModel(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
+  o.theme = !drawnByModel(o.type) && !tracedOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
   o.variations = Math.max(1, Math.min(4, Math.round(Number(raw?.variations) || 1)));
   o.background = pick(raw?.background, ['original', 'transparent', 'white', 'black', 'green'] as const, o.background);
   // clip art and line art are cut out of their ground to be traced, and a flat SVG has none: they always have a choice
-  if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type)) o.background = 'transparent';
+  // (a trace may keep the picture's own ground, a scan's margin included)
+  if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type) && !tracedOnly(o.type)) o.background = 'transparent';
   o.size = pick(raw?.size, ['drawn', 'original', '2x', '4x'] as const, o.size);
   o.enhance = raw?.enhance === true;
   o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
+  // a trace is the same every time: one version
+  if (tracedOnly(o.type)) o.variations = 1;
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
-  o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto') : 'auto';
+  o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
+    : tracedOnly(o.type) ? pick(raw?.madeFor, TRACE_TARGETS.map((t) => t.value), 'object') : 'auto';
   return o;
 }
 
@@ -319,7 +344,7 @@ const SIZE_WORDS: Record<RestyleOptions['size'], string> = { drawn: 'as drawn', 
 
 /** A result's settings as the preview says them, in plain words. What was only recorded later is left
  * out of a result that predates it, never guessed. */
-export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'seed' | 'size' | 'drawing'>): SettingRow[] {
+export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'seed' | 'size' | 'drawing'> & { traced?: RestyleResult['traced'] }): SettingRow[] {
   const o = r.options;
   const s = r.settings;
   const q = qualityOf(o);
@@ -336,6 +361,13 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     }
     if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     rows.push({ label: 'Background', value: BACKGROUND_LABEL[o.background] });
+    if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
+    return rows;
+  }
+  if (tracedOnly(o.type)) {
+    rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
+    rows.push({ label: 'Traced as', value: `the picture's own shapes in ${r.traced ? `${r.traced.colors.length} flat colors` : 'a few flat colors'}, one SVG layer each; nothing is redrawn` });
+    rows.push({ label: 'Background', value: o.background === 'original' ? 'kept as in the original, a scan\'s margin included' : `${BACKGROUND_LABEL[o.background]}; a scan's margin is cleared` });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
     return rows;
   }

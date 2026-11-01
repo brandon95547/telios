@@ -19,7 +19,8 @@ const result = (id: string, o: object = {}) => ({ id, inputName: `input-${id}`, 
 const answer = (body: string, disposition: string | null, ok = true) => ({ ok, status: ok ? 200 : 404, headers: { get: () => disposition }, json: async () => ({ error: 'This one has no SVG.' }), blob: async () => new Blob([body]) });
 
 test('what is saved of a result: the package of a flat SVG, the SVG of clip art, the picture of the rest', () => {
-  assert.match(fileOf(result('a', { drawing: { kind: 'frame' } })), /\/results\/a\/download\?format=package$/);
+  assert.match(fileOf(result('a', { drawing: { kind: 'frame' }, files: { png: 'x', svg: 'x' } })), /\/results\/a\/download\?format=package$/);
+  assert.match(fileOf(result('t', { options: { type: 'trace', format: 'png' }, traced: { colors: ['#000000'] }, files: { png: 'x', svg: 'x' } })), /\/results\/t\/download\?format=package$/, 'a trace has a package too');
   assert.match(fileOf(result('b', { options: { type: 'clipart', format: 'png' }, files: { svg: 'x' } })), /\/results\/b\/download\?format=svg$/);
   assert.match(fileOf(result('c', { options: { type: 'lineart', format: 'png' }, files: { png: 'x' } })), /\/results\/c\/download$/, 'no SVG to take: the picture');
   assert.match(fileOf(result('d')), /\/results\/d\/download$/);

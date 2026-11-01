@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
+import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, hasPackage, tracedOnly, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
@@ -162,7 +162,8 @@ export function Studio({ health }: { health: Health | null }) {
 
   // what the chosen type draws with must be ready: ComfyUI, or for a flat SVG the model
   const byModel = drawnByModel(options.type);
-  const notReady = !health ? '' : byModel
+  const traced = tracedOnly(options.type);
+  const notReady = !health || traced ? '' : byModel
     ? (health.model.ok ? '' : `The model is not ready: ${health.model.error ?? 'set one up in .env'}`)
     : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);
   const viewable = done;
@@ -186,7 +187,7 @@ export function Studio({ health }: { health: Health | null }) {
             {notReady ? notReady
               : !ready.length ? 'Add pictures first.'
               : !count ? 'Tick the pictures to redraw, or turn on Process every picture.'
-              : `${toDraw.length} picture${toDraw.length === 1 ? '' : 's'} × ${options.variations} version${options.variations === 1 ? '' : 's'}, ${byModel ? 'two at a time' : 'one at a time'}.`}
+              : `${toDraw.length} picture${toDraw.length === 1 ? '' : 's'} × ${options.variations} version${options.variations === 1 ? '' : 's'}, ${byModel || traced ? 'two at a time' : 'one at a time'}.`}
           </div>
         </div>
       </aside>
@@ -266,7 +267,7 @@ export function Studio({ health }: { health: Health | null }) {
                     {r.files && (
                       <div className="tile-actions">
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>
-                        {drawnByModel(r.options.type) && r.drawing
+                        {hasPackage(r)
                           ? <DownloadMenu id={r.id} name={r.inputName} />
                           : <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options.type) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>}
                       </div>

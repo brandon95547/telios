@@ -9,7 +9,7 @@ import path from 'node:path';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, cleanOptions, drawnByModel, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, cleanOptions, drawnByModel, hasPackage, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
@@ -207,7 +207,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     }
     if (want === 'package') {
       // a flat SVG as an app takes it in: the SVG, its fitting data and checks, and the sheet that shows it fitted
-      if (!r.files.svg || !r.drawing) return res.status(404).json({ error: 'Only a flat SVG has an app package.' });
+      if (!hasPackage(r)) return res.status(404).json({ error: 'Only a flat SVG or a trace has an app package.' });
       fs.mkdirSync(ZIPS, { recursive: true });
       const token = crypto.randomBytes(12).toString('hex');
       const work = path.join(ZIPS, `${token}.files`);
@@ -265,7 +265,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
         manifest.push({ src, name: unique(`${base}.${EXT[r.options.format]}`) });
         if (r.files!.svg) manifest.push({ src: path.join(resultDir(r.id), 'result.svg'), name: unique(`${base}.svg`) });
         if (r.files!.layout) manifest.push({ src: path.join(resultDir(r.id), 'layout.json'), name: unique(`${base}.layout.json`) });
-        if (r.files!.svg && r.drawing) manifest.push(...await writePackage(r, base, path.join(work, `${r.id}-package`), folderFor(`${base}-package`)));
+        if (hasPackage(r)) manifest.push(...await writePackage(r, base, path.join(work, `${r.id}-package`), folderFor(`${base}-package`)));
       }
       fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(manifest));
       await python(['pack', path.join(work, 'manifest.json'), path.join(ZIPS, `${token}.zip`)], 15 * 60_000);

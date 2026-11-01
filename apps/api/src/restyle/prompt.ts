@@ -50,7 +50,7 @@ export function lookWords(o: RestyleOptions): string[] {
  * is written in the look already (the model is given it, to describe the character as that look would draw it), so the
  * look is not added after it: words tacked on to a description of the original did not change what was drawn. */
 export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor, lead?: string) {
-  if (o.type === 'vector') throw new Error('A flat SVG is drawn by the model, not by ComfyUI: it has no prompt.');
+  if (o.type === 'vector' || o.type === 'trace') throw new Error('A flat SVG is drawn by the model, and a trace made by the worker, not by ComfyUI: neither has a prompt.');
   // a phrase the model wrote starts with a capital; inside the sentence it should not
   const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
   const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : TYPE_WORDS[o.type](what)];

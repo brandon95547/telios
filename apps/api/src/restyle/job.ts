@@ -86,8 +86,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
-  if (o.type === 'vector') {   // drawn by the model (vector.ts), and never sent here
-    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; delete x.progress; x.error = 'A flat SVG is drawn by the model, not by ComfyUI.'; });
+  if (o.type === 'vector' || o.type === 'trace') {   // drawn by the model (vector.ts) or traced (trace.ts), and never sent here
+    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; delete x.progress; x.error = o.type === 'trace' ? 'A trace is made by the worker, not by ComfyUI.' : 'A flat SVG is drawn by the model, not by ComfyUI.'; });
     return;
   }
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));

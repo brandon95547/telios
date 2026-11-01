@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { drawnByModel, findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
+import { drawnByModel, hasPackage, tracedOnly, findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
 import { api, restyle } from '../api.ts';
 import { PromptDialog } from './PromptDialog.tsx';
 
@@ -24,7 +24,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
   }, [index, results.length, r, onClose, setIndex, toggle, promptOpen]);
   if (!r?.files) return null;
   const o = r.options;
-  const byModel = drawnByModel(o.type);
+  const byModel = drawnByModel(o.type) || tracedOnly(o.type);   // its SVG comes with a package, and its picture is only a preview
   const ground = o.background === 'transparent' ? 'checker' : o.background === 'original' ? '' : o.background;
   return (
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`${r.inputName}, ${index + 1} of ${results.length}`} onClick={onClose}>
@@ -46,15 +46,15 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
             <figcaption>The original</figcaption>
           </figure>
           <figure className={`result ${ground}`}>
-            <img src={api.file(r.files.view)} alt="Redrawn" />
-            <figcaption>Redrawn</figcaption>
+            <img src={api.file(r.files.view)} alt={tracedOnly(o.type) ? 'Traced' : 'Redrawn'} />
+            <figcaption>{tracedOnly(o.type) ? 'Traced' : 'Redrawn'}</figcaption>
           </figure>
         </div>
         <div className="viewer-foot">
           <button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)}>← Previous</button>
           <span className="downloads-inline">
             Download
-            {byModel && r.drawing && <a href={restyle.downloadOne(r.id, 'package')} download title="The SVG, its fitting data and checks, and the sheet that shows it fitted: what an app takes in">App package</a>}
+            {hasPackage(r) && <a href={restyle.downloadOne(r.id, 'package')} download title="The SVG, its fitting data and checks, and the sheet that shows it fitted: what an app takes in">App package</a>}
             {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download title="The drawing alone, without its fitting data">SVG alone</a>}
             {byModel && r.files.layout && <a href={restyle.downloadOne(r.id, 'layout')} download>Fitting data</a>}
             {byModel && 'Preview:'}

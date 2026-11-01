@@ -11,10 +11,11 @@ import { readDesign } from '../engine/read.ts';
 import { originalCrop } from '../engine/render.ts';
 import { reillustrate, isCanceled } from '../engine/draw.ts';
 import { finishDrawing, finishRebuild, finishTrace } from '../engine/finish.ts';
-import { drawnByModel } from '@telios/shared';
+import { drawnByModel, tracedOnly } from '@telios/shared';
 import type { Reading, Run, RunEvent } from '@telios/shared';
 import { prepareInput } from '../restyle/prepare.ts';
 import { drawResult } from '../restyle/job.ts';
+import { drawTrace } from '../restyle/trace.ts';
 import { drawVector } from '../restyle/vector.ts';
 import { getResult, listInputs, listResults, updateResult } from '../restyle/store.ts';
 
@@ -49,13 +50,16 @@ const restyleQueue = new Queue(1);
 const drawing = new Map<string, AbortController>();
 
 function restyle(resultId: string) {
-  const byModel = drawnByModel(getResult(resultId)?.options.type ?? 'clipart');
-  (byModel ? runQueue : restyleQueue).push(async () => {
+  const type = getResult(resultId)?.options.type ?? 'clipart';
+  const byModel = drawnByModel(type);
+  // a trace is the worker's own work on the CPU: it does not wait for the GPU
+  (byModel ? runQueue : tracedOnly(type) ? traceQueue : restyleQueue).push(async () => {
     if (getResult(resultId)?.status !== 'queued') return;   // stopped or deleted while it waited
     const controller = new AbortController();
     drawing.set(resultId, controller);
     try {
       if (byModel) await drawVector(resultId, controller.signal, { read: ingest, draw: runJob });
+      else if (tracedOnly(type)) await drawTrace(resultId, controller.signal);
       else await drawResult(resultId, controller.signal);
     } finally { drawing.delete(resultId); }
   });

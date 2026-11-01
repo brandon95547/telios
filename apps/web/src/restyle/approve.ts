@@ -11,7 +11,7 @@
 //
 // A file that is already in the folder is never overwritten: the new one is named "name (2)".
 
-import { typeInfo, type RestyleResult } from '@telios/shared';
+import { hasPackage, typeInfo, type RestyleResult } from '@telios/shared';
 import { restyle } from '../api.ts';
 
 /** The part of a browser's directory handle that is used here. */
@@ -78,7 +78,7 @@ export async function folderToSave(): Promise<Folder | null> {
 }
 
 /** What is saved of a result, and from where. */
-export const fileOf = (r: RestyleResult) => restyle.downloadOne(r.id, r.drawing ? 'package' : typeInfo(r.options.type).vector && r.files?.svg ? 'svg' : undefined);
+export const fileOf = (r: RestyleResult) => restyle.downloadOne(r.id, hasPackage(r) ? 'package' : typeInfo(r.options.type).vector && r.files?.svg ? 'svg' : undefined);
 
 /** A name the browser's folder access will take: it refuses a path mark, a control character (a picture's name that came
  * out of a zip with its emoji misread carries C1 ones, which show as nothing), an invisible space, and a name that starts

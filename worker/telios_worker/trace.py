@@ -77,9 +77,32 @@ def segment(rgba, color_mode, keep_background=False, pinhole=12, wider=1.0):
     return shape, window, paper
 
 
-def palette_for(rgb, labs, shape, palette, paper, keep_background=False, max_colors=8):
+def merged(pal, counts, within):
+    """The colors with every pair closer than `within` (Lab distance) made one, at their share-weighted mean,
+    nearest pair first. A color nobody uses is dropped."""
+    pal = [np.array(c, float) for c, n in zip(pal, counts) if n > 0]
+    counts = [float(n) for n in counts if n > 0]
+    while len(pal) > 1:
+        labs = [lab(c) for c in pal]
+        best = None
+        for i in range(len(pal)):
+            for j in range(i + 1, len(pal)):
+                d = float(np.linalg.norm(labs[i] - labs[j]))
+                if d < within and (best is None or d < best[0]):
+                    best = (d, i, j)
+        if best is None:
+            break
+        _, i, j = best
+        pal[i] = (pal[i] * counts[i] + pal[j] * counts[j]) / (counts[i] + counts[j])
+        counts[i] += counts[j]
+        del pal[j], counts[j]
+    return np.array(pal)
+
+
+def palette_for(rgb, labs, shape, palette, paper, keep_background=False, max_colors=8, merge=0):
     """The colors to draw with, dark to light: the reading's (less any that is the paper's own),
-    or the design's main colors. (rgb array, names)."""
+    or the design's main colors. (rgb array, names). `merge`: the lightness-and-color distance (Lab) under which
+    two of the design's own colors are one, as a scan's browns that differ by the print's grain are; 0 leaves them."""
     if palette:
         pal = np.array([parse_hex(p['hex'] if isinstance(p, dict) else p) for p in palette], float)
         names = [p.get('name') if isinstance(p, dict) else None for p in palette]
@@ -91,23 +114,25 @@ def palette_for(rgb, labs, shape, palette, paper, keep_background=False, max_col
     else:
         pts = labs[shape]
         pts = pts[np.random.default_rng(0).choice(len(pts), min(len(pts), 60_000), replace=False)]
-        n = max(1, min(max_colors, 6))
+        n = max(1, min(max_colors, 8 if merge else 6))
         centers, _ = kmeans2(pts, n, minit='++', seed=0, iter=25)
         idx = vq(labs[shape], centers)[0]
         pal = np.array([rgb[shape][idx == i].mean(0) if (idx == i).any() else [128] * 3 for i in range(n)])
-        names = [None] * n
+        if merge:
+            pal = merged(pal, np.bincount(idx, minlength=n).astype(float), merge)
+        names = [None] * len(pal)
     order = np.argsort(lab(pal)[:, 0])
     return pal[order], [names[i] for i in order]
 
 
-def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios'):
+def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0):
     im, k, (w0, h0) = prepare(source)
     rgba = np.asarray(im).astype(np.float64)
     h, w = rgba.shape[:2]
     rgb = ndimage.gaussian_filter(rgba[..., :3], (0.8, 0.8, 0))
     shape, window, paper = segment(np.asarray(im), color_mode, keep_background, 12 * k * k)
     labs = lab(rgb)
-    pal, names = palette_for(rgb, labs, shape, palette, paper, keep_background, max_colors)
+    pal, names = palette_for(rgb, labs, shape, palette, paper, keep_background, max_colors, merge)
 
     band = np.zeros((h, w), int)
     band[shape] = vq(labs[shape], lab(pal))[0]
