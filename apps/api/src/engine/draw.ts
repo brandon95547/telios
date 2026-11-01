@@ -12,6 +12,8 @@ import { runProgram, drawlibSource } from '../sandbox/run.ts';
 import { checkSvg } from './svg.ts';
 import { closeup, compare, fitCheck, forModel, normalizePalette, offPalette, render, sizeOf, symmetry, unitCheck, windowOf } from './render.ts';
 import { appReady, failures, layoutWarnings } from './appready.ts';
+import { overlayCheck } from './overlay.ts';
+import { cellFacts, cellFile, cellOf, cutCell, tileInstruction, type Cell } from './lattice.ts';
 import { rel } from '../store.ts';
 import { classOf, FRAME_MASTER } from '@telios/shared';
 import type { AppReport, Checks, Iteration, Layout, PaletteColor, PieceClass, Reading, Run, RunEvent } from '@telios/shared';
@@ -106,13 +108,16 @@ export interface Drawing {
 class Canceled extends Error {}
 
 /** The task: the original, a detail at full resolution, and what the reading and the measurements say. */
-async function firstMessage(ctx: DrawContext): Promise<Message> {
+async function firstMessage(ctx: DrawContext, cell: (Cell & { file: string }) | null): Promise<Message> {
   const { run, analysis, cropPng } = ctx;
   const r: Reading = run.reading;
   const meta = await sharp(cropPng).metadata();
   const W = meta.width!, H = meta.height!;
   const content: Part[] = [textPart('The original (cropped to the design):'), imagePart(await forModel(fs.readFileSync(cropPng)))];
-  if (Math.max(W, H) > 1900) {
+  if (cell) {
+    // a surface pattern's one cell, which is the tile to draw (it stands in for the detail below)
+    content.push(textPart('One cell of the pattern, cut from the middle of the scan: the tile to draw.'), imagePart(await forModel(fs.readFileSync(cell.file), 1400)));
+  } else if (Math.max(W, H) > 1900) {
     // a detail at the scan's own resolution: the top-left corner and the start of the edges
     const side = Math.round(Math.min(W, H) * 0.42);
     const detail = await sharp(cropPng).extract({ left: 0, top: 0, width: Math.min(W, side * 1.4 | 0), height: Math.min(H, side) }).png().toBuffer();
@@ -121,6 +126,7 @@ async function firstMessage(ctx: DrawContext): Promise<Message> {
   const bb = analysis?.bbox as number[] | undefined;
   const frac = (v: number, of: number) => +(v / of).toFixed(3);
   const measured: Record<string, unknown> = { aspect: +(W / H).toFixed(4), pixels: [W, H] };
+  if (cell) measured.repeatCell = cellFacts(cell);
   if (bb && analysis?.window) measured.window = { x: frac(analysis.window[0], bb[2]), y: frac(analysis.window[1], bb[3]), w: frac(analysis.window[2], bb[2]), h: frac(analysis.window[3], bb[3]), note: 'as shares of the design\'s width and height' };
   if (bb && analysis?.bands) measured.bandDepths = Object.fromEntries(Object.entries(analysis.bands).map(([k, v]) => [k, frac(v as number, k === 'top' || k === 'bottom' ? bb[3] : bb[2])]));
   if (bb && analysis?.repeats) measured.repeats = Object.fromEntries(Object.entries(analysis.repeats).map(([k, v]: [string, any]) => [k, { periodShare: frac(v.period, k === 'x' ? bb[2] : bb[3]), unitsAlong: v.count, strength: v.strength }]));
@@ -135,6 +141,7 @@ async function firstMessage(ctx: DrawContext): Promise<Message> {
     `Color rule: ${r.colorMode === 'neutral' ? `neutral base: draw in grays only (the original's color stands for ${r.material || 'a material'})${r.rendering === 'shaded' ? ', up to 12 grays for the relief' : ''}.` : r.colorMode === 'full' ? 'full color: keep the original\'s palette (at most eight flat colors).' : `one ink${r.carvedLines ? ', with the carved lines in their own color (Ivory #f3e8cf)' : ''}.`}`,
     cls === 'frame'
       ? `Return layout.form 'frame', drawn with frameKit. Draw it on a square master, ${FRAME_MASTER} × ${FRAME_MASTER} design units: not the original's shape (its aspect is ${(W / H).toFixed(3)}), so the measurements above are of the original: carry the proportions of its bands and ornaments over, not its canvas.`
+      : cell ? tileInstruction(cell)
       : `Return layout.form '${form}'. Make the canvas the design's aspect ratio (${(W / H).toFixed(3)}), about 1200–1800 units on the long side${cls === 'object' ? ', with about 3% spare all round' : ''}.`,
     run.options.note ? `The user adds: ${run.options.note}` : '',
     `You have ${run.options.maxRenders} renders. Plan briefly, then call draw.`,
@@ -146,7 +153,11 @@ async function firstMessage(ctx: DrawContext): Promise<Message> {
 export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
   const { run, emit, signal } = ctx;
   const maxRenders = run.options.maxRenders;
-  const messages: Message[] = [{ role: 'system', content: systemOf(classOf(run.reading.kind)) }, await firstMessage(ctx)];
+  // a surface pattern is drawn as one cell of its lattice (the scan is cropped where its page ended), and compared with that cell
+  const found = classOf(run.reading.kind) === 'tile' ? cellOf(ctx.analysis) : null;
+  const cell = found ? { ...found, ...(await cutCell(ctx.cropPng, found, cellFile(ctx.runDir))) } : null;
+  const reference = cell?.file ?? ctx.cropPng;
+  const messages: Message[] = [{ role: 'system', content: systemOf(classOf(run.reading.kind)) }, await firstMessage(ctx, cell)];
   let best: { program: string; svg: string; palette: PaletteColor[]; layout: Layout | null; report: AppReport } | null = null;
   let attempted = '';      // the last program tried, rendered or not: revise edits it
   let renders = 0, attempts = 0, nudged = false, overLimit = 0, cutOff = 0, pressed = false;
@@ -242,7 +253,7 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
       if (!p.success) return err('closeup takes { x, y, w, h } in design units.');
       if (!best) return err('Nothing has rendered yet.');
       const { x, y, w, h } = p.data;
-      const c = await closeup(ctx.cropPng, best.svg, [x, y, w, h]);
+      const c = await closeup(reference, best.svg, [x, y, w, h]);
       return { text: 'The close-up is the next image.', images: [{ caption: `Close-up, left: the original; right: your drawing. Region ${Math.round(x)},${Math.round(y)} ${Math.round(w)}×${Math.round(h)} units, shown at ${c.scale.toFixed(2)}× (the original's region is ${c.originalPixels.join('×')} scan pixels).`, jpeg: await forModel(c.image) }] };
     }
     if (name === 'finish') {
@@ -287,12 +298,14 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
     fs.writeFileSync(path.join(dir, 'drawing.svg'), svg);
     const png = await render(svg, { long: 1400 });
     fs.writeFileSync(path.join(dir, 'render.png'), png);
-    const cmp = await compare(ctx.cropPng, png);
+    // where the drawing sits against the original, measured (only where it keeps the original's shape)
+    const overlay = await overlayCheck(fs.readFileSync(reference), png, palette.map((p) => ({ hex: p.hex, name: p.name })), { wrap: !!cell }).catch(() => null);
+    const cmp = await compare(reference, png, 900, overlay?.panel);
     fs.writeFileSync(path.join(dir, 'compare.png'), cmp);
     iteration.files.render = rel(path.join(dir, 'render.png'));
     iteration.files.compare = rel(path.join(dir, 'compare.png'));
     iteration.files.drawing = rel(path.join(dir, 'drawing.svg'));
-    const images: { caption: string; jpeg: Buffer }[] = [{ caption: `Render ${renders}, image 1: the original (left) beside your drawing (right).`, jpeg: await forModel(cmp) }];
+    const images: { caption: string; jpeg: Buffer }[] = [{ caption: overlay ? `Render ${renders}, image 1: the original (left), your drawing (middle), and the original's strongest edges in red over your drawing (right): where a red line does not follow your shapes, something is out of place.` : `Render ${renders}, image 1: the original (left) beside your drawing (right).`, jpeg: await forModel(cmp) }];
     const warnings: string[] = [];
     try {
       const u = await unitCheck(svg, layout);
@@ -351,6 +364,7 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
       `Layout: ${JSON.stringify(layout)}.`,
       `App-ready: ${report.checks.filter((c) => c.ok).length} of ${report.checks.length} checks pass${report.ok ? '' : ` (failing: ${report.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(', ')})`}.`,
       `Symmetry: left–right ${sym.lr}, top–bottom ${sym.tb}.`,
+      overlay?.report ?? '',
       warnings.length ? `Warnings:\n- ${warnings.join('\n- ')}` : 'No warnings.',
       out.output.logs.length ? `console.log:\n${out.output.logs.join('\n')}` : '',
       `${images.length} image${images.length === 1 ? '' : 's'} follow: ${images.map((im) => im.caption).join(' ')}`,

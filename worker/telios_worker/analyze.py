@@ -243,7 +243,25 @@ def lattice_of(gray):
     kind = 'grid'
     if abs(ay) <= 2 and abs(bx) > 3 and abs(abs(bx) - abs(ax) / 2) < 4:
         kind = 'half-drop' if abs(by) > abs(ax) * 0.4 else 'brick'
-    return {'a': [int(ax), int(ay)], 'b': [int(bx), int(by)], 'strength': float(round(min(s1, s2), 3)), 'kind': kind}
+    # the rectangle that repeats along both axes (what a tile is): the shortest translation that is level and the
+    # shortest that is plumb, among the two found and their sum and difference. A pair that leans both ways
+    # (a centered lattice, as a staggered pattern is) has the level one in their difference and the plumb one in
+    # their sum, and its rectangle holds two of the motif.
+    combos = [(ax, ay), (bx, by), (ax + bx, ay + by), (ax - bx, ay - by)]
+    level = [c for c in combos if abs(c[1]) <= 3 and abs(c[0]) > 3]
+    plumb = [c for c in combos if abs(c[0]) <= 3 and abs(c[1]) > 3]
+    cell = None
+    per = 1
+    if level and plumb:
+        cw = min(abs(c[0]) for c in level)
+        ch = min(abs(c[1]) for c in plumb)
+        cell = [int(cw), int(ch)]
+        det = abs(ax * by - ay * bx)
+        per = max(1, int(round(cw * ch / det))) if det else 1
+        if per == 2 and kind == 'grid':
+            kind = 'half-drop'
+    return {'a': [int(ax), int(ay)], 'b': [int(bx), int(by)], 'strength': float(round(min(s1, s2), 3)), 'kind': kind,
+            'cell': cell, 'perCell': per}
 
 
 # ── Palette, rendering, carved lines ──
@@ -494,6 +512,8 @@ def ingest(original, outdir):
     if lat:
         lat['a'] = [scale(v) for v in lat['a']]
         lat['b'] = [scale(v) for v in lat['b']]
+        if lat.get('cell'):
+            lat['cell'] = [scale(v) for v in lat['cell']]
     return {
         'size': [w, h],
         'measuredAt': round(k, 4),

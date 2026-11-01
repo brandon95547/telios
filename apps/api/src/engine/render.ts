@@ -61,10 +61,10 @@ export async function sideBySide(images: Buffer[], height: number, gap = 24): Pr
   return sharp({ create: { width: W, height: H, channels: 3, background: GROUND } }).composite(comps).png().toBuffer();
 }
 
-/** The original beside the drawing (on white), both the same height. */
-export async function compare(originalPng: string, drawingPng: Buffer, height = 900) {
+/** The original beside the drawing (on white), both the same height, and where there is one, the original's edges over the drawing. */
+export async function compare(originalPng: string, drawingPng: Buffer, height = 900, overlay?: Buffer) {
   const onWhite = await sharp(drawingPng).flatten({ background: '#ffffff' }).png().toBuffer();
-  return sideBySide([fs.readFileSync(originalPng), onWhite], height);
+  return sideBySide([fs.readFileSync(originalPng), onWhite, ...(overlay ? [overlay] : [])], height);
 }
 
 /** A close-up: the same region of the original and the drawing, enlarged. `region` is in design units. */
