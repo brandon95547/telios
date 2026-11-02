@@ -14,23 +14,7 @@ export const CATALOG: Catalog = {
    "id": "realism",
    "label": "Realism",
    "words": "photorealistic illustration, lifelike proportions, natural light, crisp true-to-life detail and texture",
-   "substyles": [
-    {
-     "id": "fantastic-realism",
-     "label": "Fantastic Realism",
-     "words": "fantastic realism, mythic and otherworldly subjects painted with meticulous lifelike detail"
-    },
-    {
-     "id": "biomechanical",
-     "label": "Biomechanical",
-     "words": "biomechanical art, organic forms fused with machinery, ribbed metallic textures, intricate surreal anatomy"
-    },
-    {
-     "id": "magical-realism",
-     "label": "Magical Realism",
-     "words": "magical realism, an everyday scene painted realistically with one quiet impossible element, calm luminous mood"
-    }
-   ]
+   "substyles": []
   },
   {
    "id": "impressionism",
@@ -74,36 +58,23 @@ export const CATALOG: Catalog = {
    ]
   },
   {
-   "id": "abstract-expressionism",
-   "label": "Abstract Expressionism",
-   "words": "abstract expressionist action painting, large gestural brushstrokes, drips and splatters, raw energetic color",
-   "substyles": [
-    {
-     "id": "color-field",
-     "label": "Color Field Painting",
-     "words": "color field painting, broad expanses of flat soaked color, soft edges, meditative calm"
-    }
-   ]
-  },
-  {
-   "id": "surrealism",
-   "label": "Surrealism",
-   "words": "surrealist art, a dreamlike impossible scene, uncanny juxtapositions, the strange rendered precisely",
-   "substyles": []
-  },
-  {
    "id": "abstract",
    "label": "Abstract",
    "words": "abstract art, bold geometric shapes, precise lines and flat planes of color, forms suggested rather than literal",
    "substyles": [
     {
+     "id": "color-field",
+     "label": "Color Field Painting",
+     "words": "color field painting, broad expanses of flat soaked color, soft edges, meditative calm"
+    },
+    {
      "id": "organic-abstraction",
-     "label": "Organic Abstraction",
+     "label": "Organic Abstract",
      "words": "organic abstraction, flowing biomorphic shapes, natural curves, soft layered color"
     },
     {
      "id": "lyrical-abstraction",
-     "label": "Lyrical Abstraction",
+     "label": "Lyrical Abstract",
      "words": "lyrical abstraction, loose poetic brushwork, luminous washes, free flowing color"
     }
    ]
@@ -115,7 +86,7 @@ export const CATALOG: Catalog = {
    "substyles": [
     {
      "id": "hard-edge-painting",
-     "label": "Hard-Edge Minimalism",
+     "label": "Hard Edge Minimalism",
      "words": "hard-edge minimalism, crisp sharp-edged shapes of flat color, high contrast, clean abrupt transitions"
     }
    ]
@@ -139,15 +110,16 @@ export const CATALOG: Catalog = {
    "substyles": [
     {
      "id": "streamline-moderne",
-     "label": "Streamline Moderne",
+     "label": "Streamline Modern",
      "words": "streamline moderne, sleek aerodynamic curves, horizontal speed lines, polished chrome, nautical motifs"
-    },
-    {
-     "id": "egyptian-revival",
-     "label": "Egyptian Revival Art Deco",
-     "words": "Egyptian revival art deco, lotus and scarab motifs, pyramids, gold, lapis and black, symmetrical stylized figures"
     }
    ]
+  },
+  {
+   "id": "psychedelic",
+   "label": "Psychedelic",
+   "words": "psychedelic art, swirling kaleidoscopic patterns, vivid saturated neon colors, flowing warped forms, 1960s concert poster style",
+   "substyles": []
   },
   {
    "id": "classical",
@@ -168,7 +140,7 @@ export const CATALOG: Catalog = {
    "substyles": [
     {
      "id": "rubber-hose",
-     "label": "Rubber Hose",
+     "label": "Rubber Hose Cartoon",
      "words": "rubber hose cartoon, 1930s animation, noodle limbs, pie-cut eyes, white gloves, muted vintage color"
     },
     {
@@ -189,11 +161,6 @@ export const CATALOG: Catalog = {
      "words": "retro anime, 1980s and 1990s hand-painted cel animation, soft film grain, muted colors, detailed painted backgrounds"
     },
     {
-     "id": "chibi",
-     "label": "Chibi",
-     "words": "chibi anime style, tiny super-deformed characters, oversized heads, cute simple features"
-    },
-    {
      "id": "painterly-anime",
      "label": "Painterly Anime",
      "words": "painterly anime style, soft hand-painted backgrounds, lush natural light, gentle watercolor-like color, storybook atmosphere"
@@ -211,18 +178,8 @@ export const CATALOG: Catalog = {
    "words": "modern comic book art, bold clean inks, dynamic poses, digital coloring, cinematic lighting",
    "substyles": [
     {
-     "id": "golden-age",
-     "label": "Golden Age",
-     "words": "golden age comic book art, 1940s, simple bold inks, flat primary colors, halftone dots, heroic poses"
-    },
-    {
-     "id": "silver-age",
-     "label": "Silver Age",
-     "words": "silver age comic book art, 1960s, clean confident inking, bright flat color, dramatic dynamic panels"
-    },
-    {
      "id": "european-comics",
-     "label": "European Comics",
+     "label": "European Comic Books",
      "words": "European bande dessinée, ligne claire, clean even outlines, flat clear colors, detailed backgrounds"
     }
    ]

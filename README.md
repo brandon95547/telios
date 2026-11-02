@@ -91,8 +91,8 @@ only from nothing: started from the picture cut out and cropped into the tall ca
 close-ups, because a face fills the frame. Some small draws came out as two figures, so draw a few
 versions. It needs the model.
 
-Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
-them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,
+Six art styles are drawn with a picture in that style as well as words, because FLUX does not get
+them right from words alone: Expressionism, Fauvism, Neo-Expressionism, Impressionism,
 Rococo and Realistic Anime (`STYLE_REFERENCES` in `packages/shared/src/restyle.ts`, each with how
 strongly it is applied). That is for illustrations. The picture goes to ComfyUI beside the original, through USO, ByteDance's
 style reference for FLUX: it takes the picture's color, brushwork and texture, not what it shows.

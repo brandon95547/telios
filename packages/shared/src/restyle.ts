@@ -27,7 +27,7 @@ export interface OutputTypeInfo {
 
 export const OUTPUT_TYPES: OutputTypeInfo[] = [
   { value: 'illustration', label: 'Illustration', hint: 'Redrawn in an art style and theme, led by the picture: its pose and layout kept, its detail redrawn', vector: false, quality: 'standard',
-    styles: ['realism', 'surrealism', 'abstract', 'minimalism', 'art-nouveau', 'art-deco', 'classical', 'cartoon', 'anime', 'comic-book'] },
+    styles: null },
   // Traced, not drawn: the picture's own shapes and layout, in a few flat colors, with no redraw, so neither ComfyUI nor a model.
   { value: 'trace', label: 'Trace', hint: 'The picture itself traced into flat colors, one SVG layer per color: its shapes and layout kept exactly, with no redraw', vector: true, quality: 'fast', styles: [] },
   // Drawn by the model, not ComfyUI: no art style or theme, and no sampler quality (it is only a
@@ -107,7 +107,6 @@ export const wholeAspect = (o: { ratio?: Ratio }) => RATIOS.find((r) => r.value 
  * strongly it is applied (USO's LoRA strength): 1 is ComfyUI's own template, less lets the words
  * and the original keep more of their say. From settings tried by hand on prod's FLUX.1 Dev. */
 export const STYLE_REFERENCES: Record<string, { weight: number }> = {
-  biomechanical: { weight: 1 },
   expressionism: { weight: 0.75 },
   fauvism: { weight: 0.5 },
   'neo-expressionism': { weight: 0.5 },

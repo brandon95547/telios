@@ -43,9 +43,12 @@ test('a picture to be cut out by color is asked for on a flat key color, lit neu
   assert.match(restylePrompt(o), /with no floor, no wall and no cast shadow\.$/);                            // no key: the plain bare ground
 });
 
-test('a style must suit the type, and the types that are gone read as the default', () => {
-  assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism' }).style, '');
+test('an illustration takes any of the book app\'s styles, the others none, and the types that are gone read as the default', () => {
+  assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism' }).style, 'tonalism');
+  assert.equal(cleanOptions({ type: 'illustration', style: 'psychedelic' }).style, 'psychedelic');
   assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco' }).style, 'art-deco');
+  assert.equal(cleanOptions({ type: 'illustration', style: 'surrealism' }).style, '', 'a style the book app dropped is gone here too');
+  for (const type of ['vector', 'trace']) assert.equal(cleanOptions({ type, style: 'art-deco' }).style, '', type);
   assert.equal(cleanOptions({ type: 'illustration', style: 'rubber-hose' }).style, 'rubber-hose');   // a substyle of Cartoon
   assert.equal(cleanOptions({ variations: 99 }).variations, 4);
   assert.equal(cleanOptions({ type: 'nonsense', background: 'plaid' }).type, 'illustration');
@@ -95,12 +98,12 @@ test('names: a token\'s account, a zip\'s folders', () => {
 // ── Both ways to ComfyUI, against stand-ins ──
 
 let server: http.Server;
-test('seven styles take a reference picture, for illustrations', () => {
-  assert.deepEqual(Object.keys(STYLE_REFERENCES).sort(), ['biomechanical', 'expressionism', 'fauvism', 'impressionism', 'neo-expressionism', 'realistic-anime', 'rococo']);
+test('six styles take a reference picture, for illustrations', () => {
+  assert.deepEqual(Object.keys(STYLE_REFERENCES).sort(), ['expressionism', 'fauvism', 'impressionism', 'neo-expressionism', 'realistic-anime', 'rococo']);
   assert.equal(wantsStyleReference({ type: 'illustration', style: 'fauvism' }), true);
-  assert.equal(wantsStyleReference({ type: 'illustration', style: 'biomechanical' }), true);
+  assert.equal(wantsStyleReference({ type: 'illustration', style: 'rococo' }), true);
   assert.equal(wantsStyleReference({ type: 'trace', style: 'realistic-anime' }), false);       // a trace is not redrawn
-  assert.equal(wantsStyleReference({ type: 'vector', style: 'biomechanical' }), false);
+  assert.equal(wantsStyleReference({ type: 'vector', style: 'rococo' }), false);
   assert.equal(wantsStyleReference({ type: 'illustration', style: 'tonalism' }), false);     // no picture for it
   assert.equal(wantsStyleReference({ type: 'illustration', style: '' }), false);
   for (const id of Object.keys(STYLE_REFERENCES)) assert.ok(findStyle(id), id);              // every one is a style in the catalog
