@@ -50,7 +50,7 @@ const restyleQueue = new Queue(1);
 const drawing = new Map<string, AbortController>();
 
 function restyle(resultId: string) {
-  const type = getResult(resultId)?.options.type ?? 'clipart';
+  const type = getResult(resultId)?.options.type ?? 'illustration';
   const byModel = drawnByModel(type);
   // a trace is the worker's own work on the CPU: it does not wait for the GPU
   (byModel ? runQueue : tracedOnly(type) ? traceQueue : restyleQueue).push(async () => {

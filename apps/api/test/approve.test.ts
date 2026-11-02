@@ -15,10 +15,10 @@ function folder() {
     },
   };
 }
-const result = (id: string, o: object = {}) => ({ id, inputName: `input-${id}`, options: { type: 'render3d', format: 'webp' }, files: { png: 'x' }, ...o }) as any;
+const result = (id: string, o: object = {}) => ({ id, inputName: `input-${id}`, options: { type: 'illustration', format: 'webp' }, files: { png: 'x' }, ...o }) as any;
 const answer = (body: string, disposition: string | null, ok = true) => ({ ok, status: ok ? 200 : 404, headers: { get: () => disposition }, json: async () => ({ error: 'This one has no SVG.' }), blob: async () => new Blob([body]) });
 
-test('what is saved of a result: the package of a flat SVG, the SVG of clip art, the picture of the rest', () => {
+test('what is saved of a result: the package of a flat SVG, the SVG of a result made as clip art, the picture of the rest', () => {
   assert.match(fileOf(result('a', { drawing: { kind: 'frame' }, files: { png: 'x', svg: 'x' } })), /\/results\/a\/download\?format=package$/);
   assert.match(fileOf(result('t', { options: { type: 'trace', format: 'png' }, traced: { colors: ['#000000'] }, files: { png: 'x', svg: 'x' } })), /\/results\/t\/download\?format=package$/, 'a trace has a package too');
   assert.match(fileOf(result('b', { options: { type: 'clipart', format: 'png' }, files: { svg: 'x' } })), /\/results\/b\/download\?format=svg$/);

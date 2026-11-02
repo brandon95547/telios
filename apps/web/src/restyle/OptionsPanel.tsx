@@ -36,13 +36,12 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
-    if (t !== 'illustration') set('medium', '');
     if (drawnByModel(t) || tracedOnly(t)) set('theme', '');
     if (tracedOnly(t)) set('variations', 1);
     set('madeFor', drawnByModel(t) ? options.madeFor : tracedOnly(t) ? 'object' : 'auto');
     if (!PICTURE_LED_TYPES.includes(t)) {
       set('whole', false);
-      if (options.background === 'original') set('background', 'transparent');   // clip art and line art are cut out of their ground to be traced
+      if (options.background === 'original') set('background', 'transparent');   // a flat SVG has no ground to keep
     }
   };
   // Draw it whole has the model describe the whole figure, which is what is drawn
@@ -55,11 +54,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         <label className="field">
           <div className="label">Output type</div>
           <select value={options.type} onChange={(e) => chooseType(e.target.value as OutputType)}>
-            {(['2D', '3D', 'Vector'] as const).map((group) => (
-              <optgroup key={group} label={group}>
-                {OUTPUT_TYPES.filter((t) => t.group === group).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </optgroup>
-            ))}
+            {OUTPUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <div className="sub">{type.hint}</div>
         </label>
@@ -106,15 +101,6 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               : <div className="sub warn">{health.comfy.styleReference ? 'This style has no reference picture on this server yet' : 'ComfyUI here has no style-reference files (USO) yet'}, so it is drawn from words alone.</div>
           )}
         </label>}
-        {options.type === 'illustration' && (
-          <label className="field">
-            <div className="label">Medium</div>
-            <select value={options.medium} onChange={(e) => set('medium', e.target.value)}>
-              <option value="">None selected</option>
-              {CATALOG.mediums.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </label>
-        )}
         {redraw && <label className="field">
           <div className="label">Theme</div>
           <select value={options.theme} onChange={(e) => set('theme', e.target.value)}>
@@ -170,7 +156,6 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             </select>
           </label>}
         </div>
-        {type.vector && redraw && <div className="sub">{type.label} also comes as an SVG.</div>}
         {redraw && options.whole && !noWhole && <label className="field">
           <div className="label">Ratio</div>
           <select value={options.ratio} onChange={(e) => set('ratio', e.target.value as RestyleOptions['ratio'])}>
@@ -195,8 +180,8 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
           </select>
           {traced && <div className="sub">{options.background === 'original' ? 'Nothing is cleared: a scan\'s margin is traced with the picture.' : 'A scan\'s paper margin is cleared; the design keeps its own ground.'}</div>}
           {pictureLed && <div className="sub">{options.background === 'original' ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it.' : 'The subject is cut out of the picture and put on this background.'}</div>}
-          {options.background !== 'white' && options.background !== 'original' && (options.type === 'illustration' || options.type === 'render3d') && health && !health.comfy.cutout && (
-            <div className="sub">No background-removal model here, so {options.type === 'render3d' ? '3D' : '2D'} illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
+          {options.background !== 'white' && options.background !== 'original' && options.type === 'illustration' && health && !health.comfy.cutout && (
+            <div className="sub">No background-removal model here, so illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
         </label>
         {redraw && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}

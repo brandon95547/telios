@@ -14,10 +14,8 @@ const { wholeSizes } = await import('../src/restyle/job.ts');
 
 test('Draw it whole is for 2D and 3D illustrations only, and off by default', () => {
   assert.equal(DEFAULT_OPTIONS.whole, false);
-  assert.equal(cleanOptions({ type: 'render3d', whole: true }).whole, true);
-  assert.equal(cleanOptions({ type: 'illustration', whole: true }).whole, true);
-  assert.equal(cleanOptions({ type: 'render3d', whole: 'yes' }).whole, false);
-  for (const type of ['clipart', 'lineart', 'vector']) assert.equal(cleanOptions({ type, whole: true }).whole, false, type);
+  assert.equal(cleanOptions({ type: 'illustration', whole: 'yes' }).whole, false);
+  for (const type of ['vector', 'trace']) assert.equal(cleanOptions({ type, whole: true }).whole, false, type);
 });
 
 test('the model\'s paragraph is its lines joined, without quotes, and cut at a sentence if it is too long', () => {
@@ -35,8 +33,8 @@ test('without a model nothing is described: no call is made', async () => {
 });
 
 test('the sentence is the redraw\'s opening, and carries the look itself: none is added after it', () => {
-  const o = cleanOptions({ type: 'render3d', whole: true, theme: 'egyptian', style: 'abstract', notes: 'black granite', background: 'transparent' });
-  const p = restylePrompt(o, 'ignored', undefined, 'A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base');
+  const o = cleanOptions({ type: 'illustration', whole: true, theme: 'egyptian', style: 'abstract', notes: 'black granite', background: 'transparent' });
+  const p = restylePrompt(o, undefined, 'A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base');
   assert.match(p, /^A full-length statue of a pharaoh standing in profile, ending in bare feet on a low base\. /);
   assert.doesNotMatch(p, /referenced image|variation/, 'it does not ask for a variation of the picture');
   assert.doesNotMatch(p, /In this style|themed|black granite/, 'the look was given to the model that wrote the sentence');
@@ -44,12 +42,12 @@ test('the sentence is the redraw\'s opening, and carries the look itself: none i
   assert.match(lookWords(o).join(' '), /black granite\./);
   assert.match(p, /The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white\.$/);
   // without it, the type's own opening and ground, as before
-  assert.match(restylePrompt(o, 'ignored'), /Isolated on a plain pure white background, with no floor, no wall and no cast shadow\.$/);
-  assert.match(restylePrompt(o, 'ignored'), /^Using the referenced image as inspiration, create a 3D variation of it\./);
+  assert.match(restylePrompt(o), /Isolated on a plain pure white background, with no floor, no wall and no cast shadow\.$/);
+  assert.match(restylePrompt(o), /^Using the referenced image as inspiration, create a variation of it\./);
 });
 
 test('a whole figure is drawn on a 2:3 canvas, whatever shape the picture was, and kept at the size it was drawn', () => {
-  const o = { type: 'render3d', quality: 'high', size: 'drawn' } as const;
+  const o = { type: 'illustration', quality: 'high', size: 'drawn' } as const;
   const drawn = wholeSizes(o);
   assert.ok(Math.abs(drawn.w / drawn.h - WHOLE_ASPECT) < 0.03, `${drawn.w} × ${drawn.h}`);
   assert.deepEqual([drawn.tw, drawn.th], [drawn.w, drawn.h]);
@@ -69,10 +67,10 @@ test('a whole figure is drawn on a 2:3 canvas, whatever shape the picture was, a
 
 test('the preview says it was drawn whole, and from what sentence', () => {
   const settings = { model: 'flux', width: 416, height: 624, steps: 16, denoise: WHOLE_DENOISE, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2, whole: { prompt: 'A full-length statue.' } };
-  const rows = Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'render3d', whole: true }, settings, seed: 1, size: [416, 624] } as any).map((r) => [r.label, r.value]));
+  const rows = Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'illustration', whole: true }, settings, seed: 1, size: [416, 624] } as any).map((r) => [r.label, r.value]));
   assert.match(rows['Draw it whole'], /^the whole figure, described by the model and drawn from that sentence alone on a taller canvas/);
   assert.equal(rows['Figure asked for'], 'A full-length statue.');
-  const plain = Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'render3d' }, settings: { ...settings, whole: undefined }, seed: 1, size: [416, 624] } as any).map((r) => [r.label, r.value]));
+  const plain = Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'illustration' }, settings: { ...settings, whole: undefined }, seed: 1, size: [416, 624] } as any).map((r) => [r.label, r.value]));
   assert.equal(plain['Draw it whole'], undefined);
 });
 

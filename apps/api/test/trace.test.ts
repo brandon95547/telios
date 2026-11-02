@@ -14,9 +14,8 @@ const { getResult, resultDir, saveResult } = await import('../src/restyle/store.
 
 // ── The type ──
 
-test('Trace is a Vector type that only traces: neither ComfyUI nor a model draws it', () => {
+test('Trace is a type that only traces: neither ComfyUI nor a model draws it', () => {
   assert.equal(typeInfo('trace').label, 'Trace');
-  assert.equal(typeInfo('trace').group, 'Vector');
   assert.ok(typeInfo('trace').vector);
   assert.deepEqual(OUTPUT_TYPES.filter((t) => tracedOnly(t.value)).map((t) => t.value), ['trace']);
 });
@@ -28,14 +27,14 @@ test('a trace is one version, with no theme, and may keep the picture’s own gr
   assert.equal(o.theme, '');
   assert.equal(o.style, '');
   assert.equal(o.background, 'original');
-  assert.equal(cleanOptions({ type: 'clipart', background: 'original' }).background, 'transparent', 'clip art is still cut out of its ground');
+  assert.equal(cleanOptions({ type: 'vector', background: 'original' }).background, 'transparent', 'a flat SVG has no ground to keep');
 });
 
 test('a trace is made for an object (the default) or a pattern tile: it has no fitting data for a frame, a border or a corner', () => {
   assert.equal(cleanOptions({ type: 'trace' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'pattern' }).madeFor, 'pattern');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'frame' }).madeFor, 'object');
-  assert.equal(cleanOptions({ type: 'clipart', madeFor: 'pattern' }).madeFor, 'auto');
+  assert.equal(cleanOptions({ type: 'illustration', madeFor: 'pattern' }).madeFor, 'auto');
 });
 
 // ── Tracing one ──

@@ -24,22 +24,26 @@ const { fromAnalysis } = await import('../src/engine/read.ts');
 
 // ── The type ──
 
-test('Flat SVG is a group of its own beside 2D and 3D, and the four illustration types are as they were', () => {
-  assert.deepEqual([...new Set(OUTPUT_TYPES.map((t) => t.group))], ['2D', '3D', 'Vector']);
-  assert.deepEqual(OUTPUT_TYPES.filter((t) => t.group !== 'Vector').map((t) => [t.value, t.group]), [['clipart', '2D'], ['lineart', '2D'], ['illustration', '2D'], ['render3d', '3D']]);
+test('Flat SVG is one of three types, with illustration and trace, and the types that were dropped are gone', () => {
+  assert.deepEqual(OUTPUT_TYPES.map((t) => t.value), ['illustration', 'trace', 'vector']);
+  assert.deepEqual(OUTPUT_TYPES.map((t) => t.label), ['Illustration', 'Trace', 'Flat SVG']);
   assert.equal(typeInfo('vector').label, 'Flat SVG');
   assert.ok(typeInfo('vector').vector);
   assert.deepEqual(OUTPUT_TYPES.filter((t) => drawnByModel(t.value)).map((t) => t.value), ['vector']);
+  // a result made under a type that is gone is still told by its old name, and its SVG kept
+  assert.deepEqual([typeInfo('clipart').label, typeInfo('clipart').vector], ['Clip art', true]);
+  assert.deepEqual([typeInfo('lineart').label, typeInfo('lineart').vector], ['Line art', true]);
+  assert.deepEqual([typeInfo('render3d').label, typeInfo('render3d').vector], ['3D illustration', false]);
 });
 
-test('a flat SVG takes no art style, medium or theme, and ComfyUI is never asked to draw one', () => {
-  const o = cleanOptions({ type: 'vector', style: 'art-deco', medium: 'watercolor', theme: 'celtic', notes: 'one ink', variations: 2 });
+test('a flat SVG takes no art style or theme, and ComfyUI is never asked to draw one', () => {
+  const o = cleanOptions({ type: 'vector', style: 'art-deco', theme: 'celtic', notes: 'one ink', variations: 2 });
   assert.equal(o.type, 'vector');
-  assert.deepEqual([o.style, o.medium, o.theme], ['', '', '']);
+  assert.deepEqual([o.style, o.theme], ['', '']);
   assert.equal(o.notes, 'one ink');
   assert.equal(o.variations, 2);
   assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism', theme: 'celtic' }).theme, 'celtic');   // the others keep theirs
-  assert.throws(() => restylePrompt({ ...DEFAULT_OPTIONS, type: 'vector' }, 'x'), /not by ComfyUI/);
+  assert.throws(() => restylePrompt({ ...DEFAULT_OPTIONS, type: 'vector' }), /not by ComfyUI/);
 });
 
 // ── Drawing one ──

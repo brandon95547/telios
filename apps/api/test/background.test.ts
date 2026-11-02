@@ -55,7 +55,7 @@ test('a mask of another size still fits the picture', async () => {
 
 test('Green is a background beside the others, filled with pure green', async () => {
   assert.equal(cleanOptions({ background: 'green' }).background, 'green');
-  assert.equal(cleanOptions({ background: 'plaid' }).background, 'transparent');
+  assert.equal(cleanOptions({ background: 'plaid' }).background, 'original');
   assert.deepEqual(Object.keys(BACKGROUND_LABEL), ['original', 'transparent', 'white', 'black', 'green']);
   assert.deepEqual(BACKGROUND_HEX, { white: '#ffffff', black: '#000000', green: '#00ff00' });
   // a picture with a green ground is kept as it is in every format, with no white put behind it
@@ -67,17 +67,17 @@ test('Green is a background beside the others, filled with pure green', async ()
 });
 
 test('a green ground is drawn on white and flattened on green after the cutout, so its prompt asks for white', () => {
-  const o = { ...DEFAULT_OPTIONS, type: 'render3d' as const, style: '', background: 'green' as const };
-  const p = restylePrompt(o, 'x');
-  assert.match(p, /^Using the referenced image as inspiration, create a 3D variation of it\. Isolated on a plain pure white background, with no floor/);
+  const o = { ...DEFAULT_OPTIONS, type: 'illustration' as const, style: '', background: 'green' as const };
+  const p = restylePrompt(o);
+  assert.match(p, /^Using the referenced image as inspiration, create a variation of it\. Isolated on a plain pure white background, with no floor/);
   assert.doesNotMatch(p, /green/i);
   // with no model to cut it out, the same ground is asked for as a flat key color, as for a clear one
-  assert.match(restylePrompt(o, 'x', 'green'), /solid flat pure bright green \(#00FF00\) background/);
+  assert.match(restylePrompt(o, 'green'), /solid flat pure bright green \(#00FF00\) background/);
 });
 
 test('the preview says the subject was cut out first, and names every ground', () => {
   const settings = { model: 'flux', width: 768, height: 1360, steps: 20, denoise: 0.5, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
-  const rows = (o: object, extra: object = {}) => Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'render3d', ...o }, settings: { ...settings, ...extra }, seed: 1, size: [768, 1360] } as any).map((r) => [r.label, r.value]));
+  const rows = (o: object, extra: object = {}) => Object.fromEntries(settingRows({ options: { ...DEFAULT_OPTIONS, type: 'illustration', ...o }, settings: { ...settings, ...extra }, seed: 1, size: [768, 1360] } as any).map((r) => [r.label, r.value]));
   const cut = { by: 'model' as const, with: 'birefnet.safetensors' };
   assert.equal(rows({ background: 'white' }, { startCutout: true, cutout: cut })['Start picture'], 'the subject cut out of the picture, on flat white');
   assert.equal(rows({ background: 'white' }, { startCutout: true, cutout: cut }).Background, 'White, cut out by a model (birefnet.safetensors)');

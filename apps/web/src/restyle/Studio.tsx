@@ -203,7 +203,7 @@ export function Studio({ health }: { health: Health | null }) {
             <input type="file" multiple accept={ACCEPT} hidden onChange={(e) => { upload([...(e.target.files ?? [])], null); e.target.value = ''; }} />
             <div className="drop-title">Drop pictures, a folder or a zip to get started</div>
             <div className="drop-hint">Clip art, frames, borders, ornaments, icons, anything · PNG, JPEG, WebP, TIFF, SVG, EPS or PDF pages</div>
-            <div className="drop-hint">Then choose how they are redrawn: ComfyUI draws clip art, line art, and 2D and 3D illustrations in Talari's styles and themes; a model draws a flat SVG.</div>
+            <div className="drop-hint">Then choose how they are redrawn: ComfyUI draws illustrations in Talari's styles and themes; the worker traces a picture into flat colors; a model draws a flat SVG.</div>
           </label>
         ) : (
           <section className="block">

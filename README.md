@@ -2,19 +2,19 @@
 
 Telios has two tools.
 
-**Restyle** (the home page) redraws pictures (clip art, frames, ornaments, icons, anything) with
-ComfyUI in the look you choose: clip art, line art, a 2D illustration or a 3D illustration, in one
-of Talari's art styles (and a medium, for 2D illustrations) and one of its themes. Add one picture,
+**Restyle** (the home page) turns pictures (frames, ornaments, characters, icons, anything) into one of
+three things: an **Illustration** (ComfyUI redraws it in one of Talari's art styles and one of its themes),
+a **Trace** (the picture itself in flat colors, as SVG) or a **Flat SVG** (new vector art drawn by a model).
+Add one picture,
 several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
 results come back in a grid to tick, download as a zip (in folders by type, style and theme), delete,
 or **approve**: Approve ticked saves each ticked picture into a folder on your computer (the one you
 choose the first time, For Talari, which the browser then remembers: it needs Chrome, Edge or an app built
 on them, because Telios may run on a server that cannot write there) and takes it out of the results. A flat
-SVG is saved as its app package (a zip), clip art and line art as their SVG, anything else as the picture; a
+SVG or a trace is saved as its app package (a zip), anything else as the picture; a
 file already in the folder is never overwritten (the new one is "name (2)"), and a picture that could not
 be saved stays in the results. Each picture being drawn shows what it is doing and a progress bar, and the grid shows how far
-the whole batch has come. Clip art and line art come as SVG too. A fifth choice, **Flat SVG** (under Vector, beside
-2D and 3D), is drawn by a model instead of ComfyUI: new flat vector art of a frame, border, corner
+the whole batch has come. **Flat SVG** is drawn by a model instead of ComfyUI: new flat vector art of a frame, border, corner
 or ornament, one layer per color, with the data that fits a frame or border to any page. It is
 Vector redraw's drawing loop (below) run from the same grid, so it needs a model and no ComfyUI.
 
@@ -59,22 +59,22 @@ ComfyUI is only lent the work. Where it runs is one setting in `.env`:
   models once (about 12 GB; `npm run comfyui` does only that), then starts it on 127.0.0.1:8189.
   It wants an NVIDIA GPU; a Mac draws with Metal, slowly.
 
-The header says whether ComfyUI is ready. The Background is optional for 2D and 3D illustrations:
+The header says whether ComfyUI is ready. The Background is optional for illustrations:
 left on **Keep original** (the default) nothing is cut out, before the redraw or after it, and the picture
 is redrawn with its own background (its prompt says nothing about the ground); choose transparent, white,
-black or green and the subject is cut out onto it, as follows (clip art and line art always have one, to be traced).
-With a background removal model (BiRefNet), a 2D or 3D illustration is redrawn from its subject cut
+black or green and the subject is cut out onto it, as follows (a Flat SVG always has one).
+With a background removal model (BiRefNet), an illustration is redrawn from its subject cut
 out of the picture and put on flat white (FLUX keeps the ground it is given, so asking for a white
 background in the prompt does nothing to a photographed one), then cut out again and placed on the
 ground chosen; the cutout is made twice, so a picture takes a few seconds more. Follow the original
 is 0.40, 0.50 or 0.60 of the way for these: 0.50 is a variation that keeps the pose, face and main
 shapes and redraws the detail; from 0.70 up a picture starts to lose its subject. Without the model,
 they are drawn on a flat green backdrop (blue if the picture has greens of its own) and cut out by
-color, and a plain background is made clear by color for clip art and line art. With an upscaling
+color. With an upscaling
 model (4x-UltraSharp), Enhance details enlarges with detail. On an NVIDIA A4000 a picture takes about
 30 seconds, and the first after a pause about a minute more (the models are loaded again).
 
-**Draw it whole** (a switch for 2D and 3D illustrations) redraws a figure
+**Draw it whole** (a switch for illustrations) redraws a figure
 shown in part (a bust, a half figure) as the whole figure, standing, head to feet: the model reads the
 picture and writes one detailed paragraph (120 to 180 words): the visible part described as exactly as it
 is (colors, materials, pose and facing, every item with its own detail: headdress, face and expression,
@@ -94,8 +94,7 @@ versions. It needs the model.
 Seven art styles are drawn with a picture in that style as well as words, because FLUX does not get
 them right from words alone: Biomechanical, Expressionism, Fauvism, Neo-Expressionism, Impressionism,
 Rococo and Realistic Anime (`STYLE_REFERENCES` in `packages/shared/src/restyle.ts`, each with how
-strongly it is applied). That is for 2D and 3D illustrations; clip art and line art are drawn from
-words, so their flat, outlined look stays clean for tracing. The picture goes to ComfyUI beside the original, through USO, ByteDance's
+strongly it is applied). That is for illustrations. The picture goes to ComfyUI beside the original, through USO, ByteDance's
 style reference for FLUX: it takes the picture's color, brushwork and texture, not what it shows.
 The pictures are not in the repository: put one per style in `data/style-references/`, named by the
 style's id (`fauvism.webp`, `neo-expressionism.webp`; PNG or JPEG also work, and a large one is made

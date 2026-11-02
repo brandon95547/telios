@@ -1,5 +1,5 @@
-// Restyle: pictures (clip art, frames, ornaments, anything) redrawn by ComfyUI in a type, an art
-// style and a theme the user picks, or drawn again as flat vector art by a model. The choices, and
+// Restyle: pictures (frames, ornaments, characters, anything) redrawn by ComfyUI in an art style and a theme the user
+// picks, traced into flat colors, or drawn again as flat vector art by a model. The choices, and
 // the data kept about each input and result.
 
 import { CATALOG } from './catalog.ts';
@@ -7,39 +7,41 @@ import { TARGETS, type AppReport, type Target } from './appready.ts';
 
 export { CATALOG };
 
-/** What a picture is redrawn as. Clip art and line art come back as SVG too. A flat SVG is not drawn
- * by ComfyUI: a model writes it as a drawing program (the Vector redraw's loop). */
-export type OutputType = 'clipart' | 'lineart' | 'illustration' | 'render3d' | 'vector' | 'trace';
+/** What a picture is redrawn as: an illustration (ComfyUI, led by the picture), a trace (the worker, the picture's own shapes in flat
+ * colors) or a flat SVG (a model writes it as a drawing program, the Vector redraw's loop). */
+export type OutputType = 'illustration' | 'vector' | 'trace';
 /** The types ComfyUI draws. */
 export type ComfyType = Exclude<OutputType, 'vector' | 'trace'>;
 
 export interface OutputTypeInfo {
   value: OutputType;
   label: string;
-  group: '2D' | '3D' | 'Vector';
   hint: string;
-  /** Traced to SVG as well as kept as a picture. */
+  /** Comes as an SVG as well as a picture. */
   vector: boolean;
   /** The art styles that suit it (and their substyles); every one when null. */
   styles: string[] | null;
-  /** The quality it is drawn at when left to Auto: flat art is drawn smaller, then traced. */
+  /** The quality it is drawn at when left to Auto. */
   quality: Exclude<Quality, 'auto'>;
 }
 
 export const OUTPUT_TYPES: OutputTypeInfo[] = [
-  { value: 'clipart', label: 'Clip art', group: '2D', hint: 'Flat colors and clean outlines, as SVG and PNG', vector: true, quality: 'fast',
-    styles: ['abstract', 'minimalism', 'art-nouveau', 'art-deco', 'cartoon', 'anime', 'comic-book'] },
-  { value: 'lineart', label: 'Line art', group: '2D', hint: 'Black outlines only, like a coloring page or an engraving, as SVG and PNG', vector: true, quality: 'fast',
+  { value: 'illustration', label: 'Illustration', hint: 'Redrawn in an art style and theme, led by the picture: its pose and layout kept, its detail redrawn', vector: false, quality: 'standard',
     styles: ['realism', 'surrealism', 'abstract', 'minimalism', 'art-nouveau', 'art-deco', 'classical', 'cartoon', 'anime', 'comic-book'] },
-  { value: 'illustration', label: '2D illustration', group: '2D', hint: 'Painted or drawn in full, in any art style and medium', vector: false, quality: 'standard', styles: null },
-  { value: 'render3d', label: '3D illustration', group: '3D', hint: 'Rendered with depth, light and materials', vector: false, quality: 'standard',
-    styles: ['realism', 'surrealism', 'abstract', 'minimalism', 'art-nouveau', 'art-deco', 'classical', 'cartoon', 'anime', 'comic-book'] },
+  // Traced, not drawn: the picture's own shapes and layout, in a few flat colors, with no redraw, so neither ComfyUI nor a model.
+  { value: 'trace', label: 'Trace', hint: 'The picture itself traced into flat colors, one SVG layer per color: its shapes and layout kept exactly, with no redraw', vector: true, quality: 'fast', styles: [] },
   // Drawn by the model, not ComfyUI: no art style or theme, and no sampler quality (it is only a
   // placeholder here, for the Quality field it does not show).
-  // Traced, not drawn: the picture's own shapes and layout, in a few flat colors, with no redraw, so neither ComfyUI nor a model.
-  { value: 'trace', label: 'Trace', group: 'Vector', hint: 'The picture itself traced into flat colors, one SVG layer per color: its shapes and layout kept exactly, with no redraw', vector: true, quality: 'fast', styles: [] },
-  { value: 'vector', label: 'Flat SVG', group: 'Vector', hint: 'New flat vector art for a frame, border, corner or ornament, one layer per color, with the data that fits it to any page', vector: true, quality: 'fast', styles: [] },
+  { value: 'vector', label: 'Flat SVG', hint: 'New flat vector art for a frame, border, corner or ornament, one layer per color, with the data that fits it to any page', vector: true, quality: 'fast', styles: [] },
 ];
+
+/** What results made before these types were dropped were drawn as (clip art, line art, 2D and 3D illustration). They are not offered
+ * and cannot be drawn again, but such a result still shows, downloads and says what it was. */
+const RETIRED: Record<string, Pick<OutputTypeInfo, 'label' | 'vector'>> = {
+  clipart: { label: 'Clip art', vector: true },
+  lineart: { label: 'Line art', vector: true },
+  render3d: { label: '3D illustration', vector: false },
+};
 
 /** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI. */
 export const drawnByModel = (type: OutputType) => type === 'vector';
@@ -69,25 +71,19 @@ export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: 
   { value: 'high', label: 'High', size: 1280, steps: 48 },
 ];
 
-/** How far the redrawing may move from the original: the sampler's denoise, for each type.
- * Illustration and 3D are a variation of the picture, which carries what it shows: 0.50 keeps its
- * pose, face and main shapes and redraws the ornament and detail (tried on a photographed bust,
- * three seeds: 0.30 is a near copy, 0.60 and up starts to lose the subject, and at 0.70 from a
- * photo a bust became a man in a flight suit). Clip art changes how everything is drawn (a gray
- * engraving becomes flat color), so it needs more room than line art, which keeps the drawing and
- * only cleans it. Clip art and line art tried on prod's FLUX.1 Dev (Q4_K_S, 16 steps) with scans of
- * engraved frames. */
+/** How far the redrawing may move from the original: the sampler's denoise. An illustration is a variation of
+ * the picture, which carries what it shows: 0.50 keeps its pose, face and main shapes and redraws the ornament and
+ * detail (tried on a photographed bust, three seeds: 0.30 is a near copy, 0.60 and up starts to lose the subject, and
+ * at 0.70 from a photo a bust became a man in a flight suit). */
 export type Closeness = 'close' | 'balanced' | 'loose';
-export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: Record<ComfyType, number> }[] = [
-  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: { clipart: 0.8, lineart: 0.65, illustration: 0.4, render3d: 0.4 } },
-  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: { clipart: 0.88, lineart: 0.75, illustration: 0.5, render3d: 0.5 } },
-  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: { clipart: 0.94, lineart: 0.85, illustration: 0.6, render3d: 0.6 } },
+export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: number }[] = [
+  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: 0.4 },
+  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: 0.5 },
+  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: 0.6 },
 ];
-/** The output types redrawn from half of the way or less (CLOSENESS) that the picture carries what it
- * shows, so the prompt does not describe it. Clip art and line art are redrawn from most of the way,
- * and the words carry the subject: tried without them at 0.80, FLUX drew a skull and a heap of rocks
- * (and a bust at 0.70 from a photo became a man in a flight suit). */
-export const PICTURE_LED_TYPES: OutputType[] = ['illustration', 'render3d'];
+/** The output types redrawn from half of the way or less (CLOSENESS): the picture carries what it shows, so the prompt does not
+ * describe it (redrawn from most of the way, with the picture and no words for its subject, FLUX drew a skull and a heap of rocks). */
+export const PICTURE_LED_TYPES: OutputType[] = ['illustration'];
 
 /** Draw it whole: a figure shown in part is redrawn as the whole figure, from a sentence the model writes
  * about it full-length, on a taller canvas (2:3). The redraw starts from nothing (denoise 1): from the picture
@@ -119,15 +115,13 @@ export const STYLE_REFERENCES: Record<string, { weight: number }> = {
   rococo: { weight: 1 },
   'realistic-anime': { weight: 0.75 },
 };
-/** The output types that use it. Clip art and line art keep their flat, outlined look (and trace
- * cleanly to SVG), which a painted reference shades: tried with Realistic Anime clip art, USO
- * turned flat color into a shaded painting. */
-export const STYLE_REFERENCE_TYPES: OutputType[] = ['illustration', 'render3d'];
+/** The output types that use it. */
+export const STYLE_REFERENCE_TYPES: OutputType[] = ['illustration'];
 /** Whether this type and style are drawn with a reference picture. */
 export const wantsStyleReference = (o: { type: OutputType; style: string }) => !!STYLE_REFERENCES[o.style] && STYLE_REFERENCE_TYPES.includes(o.type);
 
 /** The ground a picture ends on. 'original' (none chosen) keeps the picture's own background: nothing is cut out, before
- * the redraw or after it (2D and 3D illustrations only: clip art and line art are cut out to be traced). The others cut
+ * the redraw or after it (illustrations only). The others cut
  * the subject out and fill the rest, or leave it clear. */
 export type Background = 'original' | 'transparent' | 'white' | 'black' | 'green';
 /** What each ground is filled with, and called. Transparent has no fill, the original keeps its own. */
@@ -141,8 +135,6 @@ export interface RestyleOptions {
   type: OutputType;
   /** An art style or one of its substyles, by id; '' for none. */
   style: string;
-  /** A medium, for 2D illustrations; '' for none. */
-  medium: string;
   /** A theme, by id; '' for none. */
   theme: string;
   closeness: Closeness;
@@ -155,7 +147,7 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
-  /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for 2D and 3D illustrations. */
+  /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for illustrations. */
   whole: boolean;
   /** The shape of the canvas a whole figure is drawn on. */
   ratio: Ratio;
@@ -164,7 +156,7 @@ export interface RestyleOptions {
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
-  type: 'clipart', style: '', medium: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
+  type: 'illustration', style: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
   background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto',
 };
 
@@ -184,7 +176,7 @@ export interface RestyleInput {
   size?: [number, number];
   /** Pixel size as uploaded (an SVG or EPS: as drawn for Telios). */
   originalSize?: [number, number];
-  /** What it shows, in a phrase: read by the model when one is set up, else from its name. */
+  /** What it shows, in a phrase: read by the model for inputs added before illustrations were led by the picture alone. */
   subject?: string;
   /** SHA-256 of the picture as added, so the same picture is not added twice. */
   hash?: string;
@@ -324,8 +316,11 @@ export function styleFits(type: OutputType, id: string) {
 }
 
 export const findTheme = (id: string) => CATALOG.themes.flatMap((g) => g.options).find((o) => o.id === id) ?? null;
-export const findMedium = (id: string) => CATALOG.mediums.find((m) => m.id === id) ?? null;
-export const typeInfo = (type: OutputType) => OUTPUT_TYPES.find((t) => t.value === type)!;
+/** An output type's info; a retired one's (a result made before it was dropped) is told by its old name, as drawn like an illustration. */
+export const typeInfo = (type: string): OutputTypeInfo => OUTPUT_TYPES.find((t) => t.value === type)
+  ?? { ...OUTPUT_TYPES[0], ...(RETIRED[type] ?? { label: String(type), vector: false }), hint: 'No longer offered', styles: null };
+/** Whether a type is one that can still be drawn. */
+export const isOffered = (type: string) => OUTPUT_TYPES.some((t) => t.value === type);
 export const qualityOf = (o: Pick<RestyleOptions, 'type' | 'quality'>) => QUALITIES.find((q) => q.value === (o.quality === 'auto' ? typeInfo(o.type).quality : o.quality))!;
 
 /** Options from a request, every field checked; what is not understood is left at its default. */
@@ -334,14 +329,12 @@ export function cleanOptions(raw: any): RestyleOptions {
   const pick = <T extends string>(v: unknown, allowed: readonly T[], d: T): T => (allowed.includes(v as T) ? (v as T) : d);
   o.type = pick(raw?.type, OUTPUT_TYPES.map((t) => t.value), o.type);
   o.style = typeof raw?.style === 'string' && styleFits(o.type, raw.style) ? raw.style : '';
-  o.medium = o.type === 'illustration' && typeof raw?.medium === 'string' && findMedium(raw.medium) ? raw.medium : '';
   o.theme = !drawnByModel(o.type) && !tracedOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
   o.variations = Math.max(1, Math.min(4, Math.round(Number(raw?.variations) || 1)));
   o.background = pick(raw?.background, ['original', 'transparent', 'white', 'black', 'green'] as const, o.background);
-  // clip art and line art are cut out of their ground to be traced, and a flat SVG has none: they always have a choice
-  // (a trace may keep the picture's own ground, a scan's margin included)
+  // a flat SVG has no ground of its own to keep, so it always has a choice (a trace may keep the picture's own ground, a scan's margin included)
   if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type) && !tracedOnly(o.type)) o.background = 'transparent';
   o.size = pick(raw?.size, ['drawn', 'original', '2x', '4x'] as const, o.size);
   o.enhance = raw?.enhance === true;

@@ -8,10 +8,11 @@ import type { AddressInfo } from 'node:net';
 
 process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-test-'));
 const { cleanOptions, DEFAULT_OPTIONS, STYLE_REFERENCES, wantsStyleReference, findStyle } = await import('@telios/shared');
-const { restylePrompt, subjectFromName } = await import('../src/restyle/prompt.ts');
+const { restylePrompt } = await import('../src/restyle/prompt.ts');
 const { drawSize, restyleWorkflow, upscaleWorkflow, cutoutWorkflow, USO } = await import('../src/comfy/workflows.ts');
 const { gatewayClient, localClient, tokenUser } = await import('../src/comfy/client.ts');
-const { targetSize, withMask } = await import('../src/restyle/job.ts');
+const { drawResult, targetSize, withMask } = await import('../src/restyle/job.ts');
+const { getResult, resultDir, saveResult } = await import('../src/restyle/store.ts');
 const { resultFolder, resultName } = await import('../src/restyle/routes.ts');
 
 const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip_l.safetensors', vae: 'ae.safetensors', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0.2 };
@@ -19,38 +20,37 @@ const FLUX = { unet: 'flux1-dev-Q4_K_S.gguf', t5: 't5.safetensors', clipL: 'clip
 // Telios builds must keep to them, or the gateway refuses it.
 const GATEWAY_NODES = new Set(['LoadImage', 'ImageScale', 'ImageScaleBy', 'ImageInvert', 'UnetLoaderGGUF', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'CLIPTextEncode', 'FluxGuidance', 'EmptySD3LatentImage', 'VAEEncode', 'VAEDecode', 'KSampler', 'EasyCache', 'CLIPVisionLoader', 'CLIPVisionEncode', 'ModelPatchLoader', 'USOStyleReference', 'InpaintModelConditioning', 'DifferentialDiffusion', 'ImageToMask', 'LoadBackgroundRemovalModel', 'RemoveBackground', 'MaskToImage', 'UpscaleModelLoader', 'ImageUpscaleWithModel', 'SaveImage']);
 
-test('each output type asks for its own look, with the style, theme and background', () => {
-  const o = { ...DEFAULT_OPTIONS, type: 'clipart' as const, style: 'art-deco', theme: 'celtic', background: 'transparent' as const };
-  const p = restylePrompt(o, 'an oval frame with scrolls');
-  assert.match(p, /^Colorful vector clip art of an oval frame with scrolls, in a flat design style/);
+test('an illustration asks for a variation of the picture, with the style, theme and background, and says nothing of 2D or 3D', () => {
+  const o = { ...DEFAULT_OPTIONS, type: 'illustration' as const, style: 'art-deco', theme: 'celtic', background: 'transparent' as const };
+  const p = restylePrompt(o);
+  assert.match(p, /^Using the referenced image as inspiration, create a variation of it\. In this style: /);
+  assert.doesNotMatch(p, /2D|3D|clip art|line art/i);
   assert.match(p, /art deco style, bold geometric symmetry/);
   assert.match(p, /Celtic and Insular themed/);
   assert.match(p, /plain pure white background, with no floor, no wall and no cast shadow\.$/);
-  assert.match(restylePrompt({ ...o, type: 'render3d', background: 'black' }, 'x'), /^Using the referenced image as inspiration, create a 3D variation of it\. In this style: .*pure white background, with no floor/);
-  assert.match(restylePrompt({ ...o, background: 'white' }, 'x'), /plain pure white background\.$/);   // a white ground is kept, so it needs no stripping
-  assert.match(restylePrompt({ ...DEFAULT_OPTIONS, type: 'lineart' }, ''), /line art of the design in the picture/);
-  assert.match(restylePrompt(DEFAULT_OPTIONS, 'Rectangular page border'), /clip art of rectangular page border/);
-  assert.match(restylePrompt(DEFAULT_OPTIONS, 'A symmetrical ornament'), /clip art of a symmetrical ornament/);
+  assert.match(restylePrompt({ ...o, background: 'black' }), /^Using the referenced image as inspiration, create a variation of it\. In this style: .*pure white background, with no floor/);
+  assert.match(restylePrompt({ ...o, background: 'white' }), /plain pure white background\.$/);   // a white ground is kept, so it needs no stripping
+  assert.equal(restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced', style: '', theme: '', notes: '', background: 'white' }), 'Using the referenced image as inspiration, create a variation of it. Isolated on a plain pure white background.');
+  assert.throws(() => restylePrompt({ ...DEFAULT_OPTIONS, type: 'trace' }), /neither has a prompt/);
 });
 
 test('a picture to be cut out by color is asked for on a flat key color, lit neutrally', () => {
   const o = { ...DEFAULT_OPTIONS, type: 'illustration' as const, background: 'transparent' as const };
-  const green = restylePrompt(o, 'a girl', 'green');
+  const green = restylePrompt(o, 'green');
   assert.match(green, /Isolated on a solid flat pure bright green \(#00FF00\) background, one uniform color from edge to edge, with no gradient, no floor, no wall and no cast shadow\. The subject floats in empty space with nothing beneath it, and is lit by neutral white light with no green reflected on it\.$/);
-  assert.match(restylePrompt(o, 'a girl', 'blue'), /bright blue \(#0000FF\) background.*no blue reflected on it\.$/);
-  assert.match(restylePrompt({ ...o, background: 'white' }, 'a girl', 'green'), /plain pure white background\.$/);   // a white ground needs no key
-  assert.match(restylePrompt(o, 'a girl'), /with no floor, no wall and no cast shadow\.$/);                            // no key: the plain bare ground
+  assert.match(restylePrompt(o, 'blue'), /bright blue \(#0000FF\) background.*no blue reflected on it\.$/);
+  assert.match(restylePrompt({ ...o, background: 'white' }, 'green'), /plain pure white background\.$/);   // a white ground needs no key
+  assert.match(restylePrompt(o), /with no floor, no wall and no cast shadow\.$/);                            // no key: the plain bare ground
 });
 
-test('a medium is for 2D illustrations only, and a style must suit the type', () => {
-  assert.equal(cleanOptions({ type: 'clipart', style: 'tonalism' }).style, '');
-  assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism' }).style, 'tonalism');
-  assert.equal(cleanOptions({ type: 'clipart', style: 'rubber-hose' }).style, 'rubber-hose');   // a substyle of Cartoon
-  assert.equal(cleanOptions({ type: 'clipart', medium: 'watercolor' }).medium, '');
-  assert.equal(cleanOptions({ type: 'illustration', medium: 'watercolor' }).medium, 'watercolor');
+test('a style must suit the type, and the types that are gone read as the default', () => {
+  assert.equal(cleanOptions({ type: 'illustration', style: 'tonalism' }).style, '');
+  assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco' }).style, 'art-deco');
+  assert.equal(cleanOptions({ type: 'illustration', style: 'rubber-hose' }).style, 'rubber-hose');   // a substyle of Cartoon
   assert.equal(cleanOptions({ variations: 99 }).variations, 4);
-  assert.equal(cleanOptions({ type: 'nonsense', background: 'plaid' }).type, 'clipart');
-  assert.match(restylePrompt(cleanOptions({ type: 'illustration', medium: 'watercolor' }), 'x'), /Made as watercolor/);
+  assert.equal(cleanOptions({ type: 'nonsense', background: 'plaid' }).type, 'illustration');
+  for (const gone of ['clipart', 'lineart', 'render3d']) assert.equal(cleanOptions({ type: gone }).type, 'illustration', gone);
+  assert.equal('medium' in cleanOptions({ type: 'illustration', medium: 'watercolor' }), false, 'a medium is no longer a choice');
 });
 
 test('a picture is drawn at its own shape, in 16-pixel steps', () => {
@@ -82,24 +82,25 @@ test('a result is kept at the size asked for, never past 8192 pixels', () => {
   assert.deepEqual(targetSize('original', [768, 768]), [768, 768]);
 });
 
-test('names: a subject from a file name, a token\'s account, a zip\'s folders', () => {
-  assert.equal(subjectFromName('Gold_Frame-01'), 'a gold frame');
+test('names: a token\'s account, a zip\'s folders', () => {
   assert.equal(tokenUser('v1.telios.1999999999.abc'), 'telios');
   assert.equal(tokenUser('nonsense'), null);
-  const r = { inputName: 'frame 01', folder: 'Frames/Gold', variation: 2, options: { ...DEFAULT_OPTIONS, type: 'lineart', style: 'art-nouveau', theme: 'gothic', variations: 3 } } as any;
-  assert.equal(resultFolder(r), 'Line art - Art Nouveau - Gothic/Frames/Gold');
+  const r = { inputName: 'frame 01', folder: 'Frames/Gold', variation: 2, options: { ...DEFAULT_OPTIONS, type: 'illustration', style: 'art-nouveau', theme: 'gothic', variations: 3 } } as any;
+  assert.equal(resultFolder(r), 'Illustration - Art Nouveau - Gothic/Frames/Gold');
   assert.equal(resultName(r), 'frame 01-v2');
+  // a result made under a type that is gone is still filed under its old name
+  assert.equal(resultFolder({ ...r, options: { ...r.options, type: 'lineart' } }), 'Line art - Art Nouveau - Gothic/Frames/Gold');
 });
 
 // ── Both ways to ComfyUI, against stand-ins ──
 
 let server: http.Server;
-test('seven styles take a reference picture, in the painted types only', () => {
+test('seven styles take a reference picture, for illustrations', () => {
   assert.deepEqual(Object.keys(STYLE_REFERENCES).sort(), ['biomechanical', 'expressionism', 'fauvism', 'impressionism', 'neo-expressionism', 'realistic-anime', 'rococo']);
   assert.equal(wantsStyleReference({ type: 'illustration', style: 'fauvism' }), true);
-  assert.equal(wantsStyleReference({ type: 'render3d', style: 'biomechanical' }), true);
-  assert.equal(wantsStyleReference({ type: 'clipart', style: 'realistic-anime' }), false);   // flat and outlined, not shaded
-  assert.equal(wantsStyleReference({ type: 'lineart', style: 'biomechanical' }), false);
+  assert.equal(wantsStyleReference({ type: 'illustration', style: 'biomechanical' }), true);
+  assert.equal(wantsStyleReference({ type: 'trace', style: 'realistic-anime' }), false);       // a trace is not redrawn
+  assert.equal(wantsStyleReference({ type: 'vector', style: 'biomechanical' }), false);
   assert.equal(wantsStyleReference({ type: 'illustration', style: 'tonalism' }), false);     // no picture for it
   assert.equal(wantsStyleReference({ type: 'illustration', style: '' }), false);
   for (const id of Object.keys(STYLE_REFERENCES)) assert.ok(findStyle(id), id);              // every one is a style in the catalog
@@ -294,30 +295,34 @@ test('a picture added before hashes were kept is still recognized, and gets its 
   assert.equal(getInput(id)?.hash?.length, 64);
 });
 
+// ── Results made under a type that is gone ──
+
+test('a result made as clip art, line art or a 3D illustration is not drawn again, and says so plainly', async () => {
+  for (const type of ['clipart', 'lineart', 'render3d']) {
+    const id = `xold${type}`;
+    fs.mkdirSync(resultDir(id), { recursive: true });
+    saveResult({ id, batchId: 'b', inputId: 'i', inputName: 'old', folder: '', variation: 1, status: 'queued', createdAt: new Date().toISOString(), options: { ...DEFAULT_OPTIONS, type } as any });
+    await drawResult(id, new AbortController().signal);
+    const r = getResult(id)!;
+    assert.equal(r.status, 'failed', type);
+    assert.match(r.error ?? '', /is no longer offered: choose Illustration, Trace or Flat SVG/, type);
+  }
+});
+
 // ── How closely it follows the original ──
 
 const { CLOSENESS } = await import('@telios/shared');
 
-test('Following the original: illustration and 3D are redrawn from 0.40, 0.50 or 0.60 of the way and do not describe the picture, and Draw it whole is gone', () => {
-  const denoise = (value: string, type: 'clipart' | 'lineart' | 'illustration' | 'render3d') => CLOSENESS.find((c) => c.value === value)!.denoise[type];
-  for (const type of ['illustration', 'render3d'] as const) {
-    assert.deepEqual([denoise('close', type), denoise('balanced', type), denoise('loose', type)], [0.4, 0.5, 0.6], type);
-  }
-  // clip art and line art must change how everything is drawn, so they keep their room
-  for (const type of ['clipart', 'lineart'] as const) assert.ok(denoise('close', type) >= 0.65, type);
+test('Following the original: an illustration is redrawn from 0.40, 0.50 or 0.60 of the way and does not describe the picture, and Draw it whole is gone', () => {
+  assert.deepEqual(CLOSENESS.map((c) => c.denoise), [0.4, 0.5, 0.6]);
   assert.deepEqual(CLOSENESS.map((c) => c.value), ['close', 'balanced', 'loose']);
   assert.ok(CLOSENESS.every((c) => c.hint.length > 10));
   // a result made with the removed choice reads as the default
   assert.equal(cleanOptions({ closeness: 'whole' }).closeness, 'balanced');
   assert.equal(cleanOptions({ closeness: 'nonsense' }).closeness, 'balanced');
-  // the picture carries what it shows there: it is the inspiration, and a variation of it is asked for (2D or 3D to match
-  // the type); clip art and line art, redrawn from most of the way, are told
-  for (const [type, dimension] of [['illustration', '2D'], ['render3d', '3D']] as const) {
-    const p = restylePrompt({ ...DEFAULT_OPTIONS, type, closeness: 'balanced', style: '', theme: '', notes: '', background: 'white' }, 'a seated pharaoh with a staff');
-    assert.equal(p, `Using the referenced image as inspiration, create a ${dimension} variation of it. Isolated on a plain pure white background.`, type);
-    assert.doesNotMatch(p, /pharaoh|staff/, type);
-  }
-  for (const type of ['clipart', 'lineart'] as const) assert.match(restylePrompt({ ...DEFAULT_OPTIONS, type }, 'a seated pharaoh with a staff'), /a seated pharaoh with a staff/, type);
+  // the picture carries what it shows: it is the inspiration, and a variation of it is asked for, with no word for what it shows
+  const p = restylePrompt({ ...DEFAULT_OPTIONS, closeness: 'balanced', style: '', theme: '', notes: '', background: 'white' });
+  assert.doesNotMatch(p, /pharaoh|staff/);
 });
 
 test('a model\'s mask becomes the picture\'s transparency', async () => {

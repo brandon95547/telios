@@ -1,5 +1,5 @@
 // One result drawn: the input's picture redrawn by ComfyUI in the chosen type, style and theme,
-// its background made clear if asked, sized, traced to SVG for clip art and line art, and given
+// its background made clear if asked, sized, and given
 // its screen copies. Runs in the job worker, one at a time: there is one GPU.
 
 import crypto from 'node:crypto';
@@ -7,17 +7,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, PICTURE_LED_TYPES, WHOLE_DENOISE, findStyle, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, WHOLE_DENOISE, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
 import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../comfy/workflows.ts';
-import { KEY_HEX, lookWords, restylePrompt, subjectFromName, type KeyColor } from './prompt.ts';
+import { KEY_HEX, lookWords, restylePrompt, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
-import { readSubject } from './subject.ts';
 import { readWholeFigure } from './whole.ts';
 import { stagesOf } from './progress.ts';
-import { getInput, rel, resultDir, updateInput, updateResult } from './store.ts';
+import { getInput, rel, resultDir, updateResult } from './store.ts';
 
 export const MAX_SIDE = 8192;
 /** The least a key-color cutout must clear of the picture to count as having found a backdrop. */
@@ -86,8 +85,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
-  if (o.type === 'vector' || o.type === 'trace') {   // drawn by the model (vector.ts) or traced (trace.ts), and never sent here
-    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; delete x.progress; x.error = o.type === 'trace' ? 'A trace is made by the worker, not by ComfyUI.' : 'A flat SVG is drawn by the model, not by ComfyUI.'; });
+  if (o.type === 'vector' || o.type === 'trace' || !isOffered(o.type)) {   // drawn by the model (vector.ts) or traced (trace.ts), and never sent here; a retired type is not drawn again
+    const why = o.type === 'trace' ? 'A trace is made by the worker, not by ComfyUI.' : o.type === 'vector' ? 'A flat SVG is drawn by the model, not by ComfyUI.'
+      : `${typeInfo(o.type).label} is no longer offered: choose Illustration, Trace or Flat SVG.`;
+    updateResult(id, (x) => { x.status = 'failed'; delete x.stage; delete x.progress; x.error = why; });
     return;
   }
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));
@@ -97,10 +98,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const source = fs.readFileSync(path.join(dir, 'source.png'));
     const meta = await sharp(source).metadata();
 
-    // what it shows: read once per input, kept with it, and only where the prompt says it
     const input = getInput(r.inputId);
-    let subject = input?.subject;
-    const pictureLed = PICTURE_LED_TYPES.includes(o.type);
     const quality = qualityOf(o);
     // every step runs: EasyCache skips the steps of a short img2img run unpredictably, so the same settings
     // came out sharp one time and soft the next (whatever the server's own setting is)
@@ -112,34 +110,24 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // greens), and cut out by color. With no ground chosen (the original's own) nothing is cut out at all.
     const removal = info.backgroundRemoval;
     const keep = o.background === 'original';
-    const byModel = pictureLed && !!removal && !keep;
+    const byModel = !!removal && !keep;
 
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
     const { w, h, tw, th } = o.whole ? wholeSizes(o) : drawnSizes([meta.width!, meta.height!], o, input?.originalSize);
     const clearing = !keep && (o.background !== 'white' || byModel);
-    const byColor = clearing && pictureLed && !removal;
+    const byColor = clearing && !removal;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
-      ...(!subject && !pictureLed ? [{ label: 'Reading the picture', seconds: 4 }] : []),
       { label: 'Preparing the picture', seconds: 2 },
       ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
       ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
       { label: 'Drawing', seconds: Math.round(28 * quality.steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
-      ...(typeInfo(o.type).vector ? [{ label: 'Tracing to SVG', seconds: 12 }] : []),
       { label: 'Finishing', seconds: 2 },
     ]);
 
-    if (!subject && !pictureLed) {
-      stage('Reading the picture');
-      const read = await readSubject(source, signal);
-      if (read) {
-        subject = read;
-        if (input) updateInput(input.id, (i) => { i.subject = read; });
-      }
-    }
     stage('Preparing the picture');
     const key: KeyColor | null = byColor ? (await python(['pickkey', path.join(dir, 'source.png')])).color : null;
     // Draw it whole: the model describes the figure full-length, and that is the prompt (a prompt that only says
@@ -150,7 +138,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       lead = (await readWholeFigure(source, signal, lookWords(o))) ?? undefined;
       if (!lead) throw new Error('Draw it whole needs the model to describe the figure, and it could not: try again.');
     }
-    const prompt = restylePrompt(o, subject ?? subjectFromName(r.inputName), key ?? undefined, lead);
+    const prompt = restylePrompt(o, key ?? undefined, lead);
     const warnings: string[] = [];
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
@@ -180,7 +168,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
-    const denoise = o.whole ? WHOLE_DENOISE : CLOSENESS.find((c) => c.value === o.closeness)!.denoise[o.type];
+    const denoise = o.whole ? WHOLE_DENOISE : CLOSENESS.find((c) => c.value === o.closeness)!.denoise;
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
     // takes the picture's look, not its subject); without the picture, or the files USO needs, it is
@@ -222,11 +210,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
         else warnings.push(`The background was not cleared: the picture came out without a plain ${key} backdrop to cut it from.`);
       } else {
         fs.writeFileSync(path.join(scratch, 'drawn.png'), png);
-        // a frame's opening is cut out too (the window rule); a character or an object has none
-        const isFrame = o.type === 'clipart' || o.type === 'lineart';
-        await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), ...(o.type === 'lineart' ? ['--everything'] : []), ...(isFrame ? [] : ['--no-window'])]);
+        // a character or an object has no opening to cut out, as a frame has
+        await python(['key', path.join(scratch, 'drawn.png'), path.join(scratch, 'clear.png'), '--no-window']);
         png = fs.readFileSync(path.join(scratch, 'clear.png'));
-        settings.cutout = { by: 'color', with: o.type === 'lineart' ? 'white, keeping the ink' : 'white' };
+        settings.cutout = { by: 'color', with: 'white' };
       }
       if (cleared && o.background !== 'transparent' && o.background !== 'original') png = await sharp(png).flatten({ background: BACKGROUND_HEX[o.background] }).png().toBuffer();
     }
@@ -248,14 +235,6 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     fs.writeFileSync(path.join(dir, 'result.png'), png);
 
-    let svg: string | undefined;
-    if (typeInfo(o.type).vector) {
-      stage('Tracing to SVG');
-      await python(['trace', path.join(dir, 'result.png'), scratch, '--mode', o.type === 'lineart' ? 'one-ink' : 'full', '--max-colors', o.type === 'lineart' ? '2' : '10'], 10 * 60_000);
-      fs.copyFileSync(path.join(scratch, 'layered.svg'), path.join(dir, 'result.svg'));
-      svg = rel(path.join(dir, 'result.svg'));
-    }
-
     stage('Finishing');
     await screenCopies(png, dir);
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
@@ -266,7 +245,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       x.size = [tw, th];
-      x.files = { png: rel(path.join(dir, 'result.png')), ...(svg && { svg }), thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')) };
+      x.files = { png: rel(path.join(dir, 'result.png')), thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')) };
     });
   } catch (e) {
     const canceled = signal.aborted;

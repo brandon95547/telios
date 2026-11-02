@@ -4,9 +4,8 @@
 // asked for again only if the browser has forgotten that it may write there. Chrome, Edge and the apps built
 // on them have it; Safari and Firefox do not.
 //
-//   a flat SVG        its app package (a zip: the SVG, its fitting data and checks, the fit sheet), which Talari's
-//                     importer takes as it is
-//   clip art, line art  the SVG
+//   a flat SVG, a trace  its app package (a zip: the SVG, its fitting data, the fit sheet), which Talari's importer takes as it is
+//   an old clip art, line art  the SVG (those types are gone, their results are kept)
 //   anything else     the picture, in the format chosen
 //
 // A file that is already in the folder is never overwritten: the new one is named "name (2)".

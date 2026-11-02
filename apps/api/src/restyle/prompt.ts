@@ -1,18 +1,11 @@
-// What ComfyUI is asked to draw: the output type's look, what the picture shows, the art style
-// (Talari's words for it), the medium, the theme and the background, in plain sentences, which
-// FLUX reads better than tag lists.
+// What ComfyUI is asked to draw: a variation of the picture, the art style (Talari's words for it), the theme and the
+// background, in plain sentences, which FLUX reads better than tag lists.
 
-import { findMedium, findStyle, findTheme, type ComfyType, type RestyleOptions } from '@telios/shared';
+import { findStyle, findTheme, type RestyleOptions } from '@telios/shared';
 
-// Illustration and 3D are led by the picture, which carries what it shows: they say nothing about
-// it, and ask for a variation with the picture as inspiration, so FLUX remixes it and does not copy.
-const VARIATION = (dimension: '2D' | '3D') => `Using the referenced image as inspiration, create a ${dimension} variation of it.`;
-const TYPE_WORDS: Record<ComfyType, (subject: string) => string> = {
-  clipart: (s) => `Colorful vector clip art of ${s}, in a flat design style: bold clean outlines, large areas of solid flat color in a bright full-color palette, simple shapes, little detail, no gradients, no shading and no texture.`,
-  lineart: (s) => `Black and white line art of ${s}. Clean black ink outlines only, even line weight, no shading, no fill and no color, like a page of a coloring book.`,
-  illustration: () => VARIATION('2D'),
-  render3d: () => VARIATION('3D'),
-};
+// An illustration is led by the picture, which carries what it shows: the prompt says nothing about it, and asks for a
+// variation with the picture as inspiration, so FLUX remixes it and does not copy.
+const VARIATION = 'Using the referenced image as inspiration, create a variation of it.';
 
 // Drawn on white: redrawn from a picture on white, FLUX keeps its white ground whatever the prompt
 // says. A black ground is the white one cut away and filled (job.ts). When the ground is to be
@@ -30,13 +23,11 @@ const BACKGROUND = 'Isolated on a plain pure white background.';
 const BARE_WHOLE = 'The whole figure is isolated on a plain, pure white background, with no floor, no wall, no scenery and no cast shadow, evenly lit so that its edges separate cleanly from the white.';
 const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floor, no wall and no cast shadow.';
 
-/** The look the user asked for, in sentences: the art style, the medium, the theme and their own words. */
+/** The look the user asked for, in sentences: the art style, the theme and their own words. */
 export function lookWords(o: RestyleOptions): string[] {
   const parts: string[] = [];
   const style = findStyle(o.style);
   if (style) parts.push(`In this style: ${style.words}.`);
-  const medium = o.type === 'illustration' ? findMedium(o.medium) : null;
-  if (medium) parts.push(`Made as ${medium.words}.`);
   const theme = findTheme(o.theme);
   if (theme) {
     const name = theme.label.replace(/&/g, 'and');
@@ -49,20 +40,12 @@ export function lookWords(o: RestyleOptions): string[] {
 /** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. That sentence
  * is written in the look already (the model is given it, to describe the character as that look would draw it), so the
  * look is not added after it: words tacked on to a description of the original did not change what was drawn. */
-export function restylePrompt(o: RestyleOptions, subject: string, key?: KeyColor, lead?: string) {
+export function restylePrompt(o: RestyleOptions, key?: KeyColor, lead?: string) {
   if (o.type === 'vector' || o.type === 'trace') throw new Error('A flat SVG is drawn by the model, and a trace made by the worker, not by ComfyUI: neither has a prompt.');
-  // a phrase the model wrote starts with a capital; inside the sentence it should not
-  const what = subject.trim().replace(/^(?:A|An|The)\b|^[A-Z](?=[a-z])/, (w) => w.toLowerCase()) || 'the design in the picture';
-  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : TYPE_WORDS[o.type](what)];
+  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : VARIATION];
   if (!lead) parts.push(...lookWords(o));
   // with no ground chosen the picture keeps its own, and the prompt says nothing about it; a whole figure is still asked for
   // on a plain white one (it has none of its own, and is drawn from nothing)
   if (o.background !== 'original' || lead) parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);
   return parts.join(' ');
-}
-
-/** A picture's subject from its file name, when no model reads it: "Frame_01" → "a frame". */
-export function subjectFromName(name: string) {
-  const words = name.replace(/\.[a-z0-9]+$/i, '').replace(/[_\-.]+/g, ' ').replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-  return words ? `a ${words}` : 'the design in the picture';
 }

@@ -66,7 +66,7 @@ test('a flat SVG says what it is made for, and nothing else is made for anything
   assert.equal(cleanOptions({ type: 'vector', madeFor: 'frame' }).madeFor, 'frame');
   assert.equal(cleanOptions({ type: 'vector', madeFor: 'object' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'vector', madeFor: 'wall' }).madeFor, 'auto', 'a word it does not know falls back');
-  assert.equal(cleanOptions({ type: 'clipart', madeFor: 'frame' }).madeFor, 'auto', 'ComfyUI types are not made for a kind');
+  assert.equal(cleanOptions({ type: 'illustration', madeFor: 'frame' }).madeFor, 'auto', 'ComfyUI types are not made for a kind');
   assert.equal(cleanOptions({}).madeFor, 'auto');
 });
 
