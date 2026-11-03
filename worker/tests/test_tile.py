@@ -157,6 +157,23 @@ class Colors(unittest.TestCase):
         self.assertIsNone(info['ground'])
         self.assertLessEqual(len(layers_of(info)), 3)
 
+    def test_a_background_inside_a_scans_paper_margin_is_found_and_the_margin_goes_with_it(self):
+        h, w, cw = 120, 640, 100
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        img = np.empty((h, w, 3), np.float32)
+        img[:] = (190, 70, 30)
+        img[(yy < h * 0.035) | (yy > h * 0.965)] = (250, 238, 196)
+        u = np.mod(xx, cw)
+        img[((u - cw * 0.5) ** 2 + (yy - h / 2) ** 2) < (h * 0.24) ** 2] = (210, 150, 32)
+        img[(np.abs(u - cw * 0.15) < 4) & (np.abs(yy - h * 0.5) < h * 0.3)] = (210, 150, 32)
+        img[(np.abs(yy - h * 0.18) < 2.5)] = (210, 150, 32)
+        img[(np.abs(yy - h * 0.82) < 2.5)] = (210, 150, 32)
+        info = run_border(with_margin(np.clip(img + np.random.default_rng(2).normal(0, 3, img.shape), 0, 255).astype(np.uint8)))
+        self.assertIsNotNone(info['ground'])
+        self.assertEqual(len(info['ground']['margins']), 1)
+        self.assertEqual(len(layers_of(info)), 1, 'only the gold is left')
+        self.assertGreater(int(layers_of(info)[0]['color'][1:3], 16), 180)
+
     def test_a_rule_along_the_edges_is_the_borders_own_and_not_its_background(self):
         info = run_border(with_margin(strip(100, 120, 640)))
         self.assertIsNone(info['ground'])

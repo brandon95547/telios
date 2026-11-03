@@ -38,7 +38,7 @@ interface Tiled extends Traced {
   size: [number, number]; cell: [number, number]; tilt: number; lattice: 'grid' | 'half-drop' | 'strip'; perCell: number;
   repeatStrength: [number, number]; copies: number; seam: number;
   /** A border's background that was taken out (its color and the share of the unit it covered), or null. */
-  ground?: { color: string; share: number } | null;
+  ground?: { color: string; share: number; margins?: string[] } | null;
 }
 
 /** A worker's error in plain words: its Python type name is not for the person. */
@@ -110,7 +110,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
       const ground = previewGround(traced.layers, t.ground ? o.background : null);
       png = strip ? await repeated(svg, 3, 1, ground, PREVIEW_SIDE) : await repeated(svg, 2, 2, ground, PREVIEW_SIDE);
       sheet = strip ? await repeated(svg, 4, 1, ground, SHEET_SIDE) : await repeated(svg, 3, 3, ground, SHEET_SIDE);
-      if (t.ground) warnings.push(`The ${strip ? "border's" : "pattern's"} background (${t.ground.color}, ${Math.round(t.ground.share * 100)}% of the ${strip ? 'unit' : 'tile'}) was taken out, leaving the design on a clear ground. If it needs it, choose Background → Keep original.`);
+      if (t.ground) warnings.push(`The ${strip ? "border's" : "pattern's"} background (${t.ground.color}, ${Math.round(t.ground.share * 100)}% of the ${strip ? 'unit' : 'tile'}) was taken out${t.ground.margins?.length ? `, with the scan's paper margin along its edges (${t.ground.margins.join(', ')})` : ''}, leaving the design on a clear ground. If it needs it, choose Background → Keep original.`);
       if (t.seam > TILE_SEAM_MAX) warnings.push(`The tile's edges do not meet cleanly (the colors change ${t.seam}× as much across them as inside): the picture may not repeat exactly.`);
       if (Math.min(...t.repeatStrength) < TILE_STRENGTH_MIN) warnings.push('The repeat is loose: copies of the pattern in the picture differ a good deal, so the tile is an average of them.');
     } else {

@@ -153,7 +153,8 @@ drawn and what it must pass:
 - A **border** or a **pattern tile** has at most three colors and no background of its own (the page
   shows through between the shapes), so an app can take it as one SVG and recolor it all at once with a
   hue adjustment. A **Trace** made for a border or a tile does this too: it merges its nearest colors
-  down to three, and takes out the color behind the design (choose Background → Keep original to keep
+  down to three, and takes out the color behind the design, read a little in from a border's edges so a
+  scan's paper margin cannot hide it, and the margin with it (choose Background → Keep original to keep
   it; a rule along a border's own edges, and the squares of a checkerboard, are never taken for a
   background).
 - An **object** is drawn whole on a canvas of its own shape with a little spare round it, and is
