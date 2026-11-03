@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { classOf, roleNames } from '@telios/shared';
+import { classOf } from '@telios/shared';
 import type { AppReport, Kind, Layout, PieceClass, RestyleResult } from '@telios/shared';
 import { render } from '../engine/render.ts';
 import { resultDir } from './store.ts';
@@ -49,21 +49,6 @@ async function inkBox(svg: string, vw: number, vh: number): Promise<[number, num
   if (x1 < 0) return null;
   const s = info.width / vw;
   return [x0 / s, y0 / s, (x1 + 1 - x0) / s, (y1 + 1 - y0) / s];
-}
-
-/** A border's or a tile's layers named by the area each covers (Primary, Secondary, Accent), in the SVG's groups and in the manifest, so every piece has the same names whatever its colors; `layers` come in the order of the SVG's groups. */
-export function withRoles(svg: string, layers: NonNullable<Meta['layers']>, palette: NonNullable<Meta['palette']>) {
-  if (!layers.length) return { svg, layers, palette };
-  const names = roleNames(layers.map((l) => l.share));
-  let n = 0;
-  const out = svg.replace(/<g\b[^>]*inkscape:groupmode="layer"[^>]*>/g, (open) => {
-    const i = n++;
-    if (i >= names.length) return open;
-    return open.replace(/\sid="[^"]*"/, ` id="layer-${i + 1}-${names[i].toLowerCase()}"`).replace(/inkscape:label="[^"]*"/, `inkscape:label="${names[i]}"`);
-  });
-  const named = layers.map((l, i) => ({ ...l, id: `layer-${i + 1}-${names[i].toLowerCase()}`, name: names[i] }));
-  const byColor = new Map(named.map((l) => [l.color.toLowerCase(), l.name]));
-  return { svg: out, layers: named, palette: palette.map((c) => ({ ...c, name: byColor.get(c.hex.toLowerCase()) ?? c.name })) };
 }
 
 /** The SVG's root tag with a new size and viewBox. */
@@ -106,9 +91,6 @@ export async function writePackage(r: RestyleResult, base: string, dir: string, 
       box = [x, y, Math.min(vw, ink[0] + ink[2] + pad) - x, Math.min(vh, ink[1] + ink[3] + pad) - y];
     }
   }
-  let layers = meta.layers ?? [];
-  let palette = meta.palette ?? [];
-  if (piece === 'border' || piece === 'tile') ({ svg, layers, palette } = withRoles(svg, layers, palette));
   svg = withBox(svg, box);
   const size: [number, number] = [round(box[2]), round(box[3])];
   const k = layout?.size?.[0] ? vw / layout.size[0] : 1;
@@ -120,7 +102,7 @@ export async function writePackage(r: RestyleResult, base: string, dir: string, 
     rendering: meta.rendering ?? 'flat', colorMode: meta.colorMode ?? r.drawing?.colorMode ?? 'full', material: meta.material ?? '', carvedLines: !!meta.carvedLines,
     style: meta.style ?? '', motifs: meta.motifs ?? '',
     size, viewBox: box.map(round), layout: fitting,
-    palette, layers,
+    palette: meta.palette ?? [], layers: meta.layers ?? [],
     summary: meta.summary ?? r.drawing?.summary ?? '', model: meta.model ?? r.drawing?.model ?? '',
     appReady: meta.appReady ?? r.drawing?.appReady ?? null,
     files: { svg: `${slug}.svg`, fitsheet: r.files.fitsheet ? `${slug}.fitsheet.png` : null },

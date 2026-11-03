@@ -143,7 +143,7 @@ test('a pattern tile is cut from the scan’s repeat: straightened, one exact ce
   const layout = JSON.parse(fs.readFileSync(path.join(resultDir('xtile1'), 'layout.json'), 'utf8'));
   assert.deepEqual([layout.form, layout.lattice], ['tile', 'half-drop']);
   assert.ok(r.files?.layout && r.files.fitsheet);
-  assert.equal(r.warning, undefined);
+  assert.match(r.warning ?? '', /The pattern's background \(#[0-9a-f]{6}, \d+% of the tile\) was taken out/);
   assert.ok(w > 0 && h > 0);
   const rows = Object.fromEntries(settingRows(r).map((x) => [x.label, x.value]));
   assert.match(rows['Repeat found'], /half-drop/);

@@ -130,6 +130,14 @@ export const BACKGROUND_LABEL: Record<Background, string> = { original: 'Keep th
 export type OutputSize = 'drawn' | 'original' | '2x' | '4x';
 export type OutputFormat = 'png' | 'webp' | 'jpeg';
 
+/** How far a trace evens out the wobble in its edges: none (the scan exactly), a little, or a lot (finer detail is lost). */
+export type CleanUp = 'off' | 'light' | 'strong';
+export const CLEANUPS: { value: CleanUp; label: string; hint: string }[] = [
+  { value: 'off', label: 'None', hint: 'The scan’s edges exactly as they are, wobble and nicks included.' },
+  { value: 'light', label: 'Light', hint: 'Small wobbles and nicks in the edges are evened out; the detail stays.' },
+  { value: 'strong', label: 'Strong', hint: 'A hand-drawn or damaged scan made smooth and even; the finest detail is lost.' },
+];
+
 export interface RestyleOptions {
   type: OutputType;
   /** An art style or one of its substyles, by id; '' for none. */
@@ -152,11 +160,13 @@ export interface RestyleOptions {
   ratio: Ratio;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
   madeFor: Target;
+  /** A trace made for an object: how far its edges are evened out. */
+  cleanup: CleanUp;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto',
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light',
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -343,6 +353,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   if (tracedOnly(o.type)) o.variations = 1;
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
+  o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
   o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
     : tracedOnly(o.type) ? pick(raw?.madeFor, TRACE_TARGETS.map((t) => t.value), 'object') : 'auto';
   return o;
@@ -386,6 +397,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
       rows.push({ label: 'Straightened', value: Math.abs(t.tilt) < 0.1 ? 'it was level' : `turned ${Math.abs(t.tilt)}° ${t.tilt > 0 ? 'back' : 'the other way'} to level it` });
       rows.push({ label: 'Seam', value: t.seam <= TILE_SEAM_MAX ? 'none: the unit’s edges meet' : `visible (the colors change ${t.seam}× as much across the edge as inside it)` });
     }
+    if (o.madeFor === 'object') rows.push({ label: 'Clean up', value: CLEANUPS.find((c) => c.value === o.cleanup)?.label ?? 'Light' });
     rows.push({ label: 'Traced as', value: `the picture's own shapes in ${r.traced ? `${r.traced.colors.length} flat colors` : 'a few flat colors'}, one SVG layer each; nothing is redrawn` });
     rows.push({ label: 'Background', value: o.background === 'original' ? 'kept as in the original, a scan\'s margin included' : `${BACKGROUND_LABEL[o.background]}; a scan's margin is cleared` });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });

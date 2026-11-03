@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from telios_worker.tile import border, centered, centered_x, lay_tile, seam_of, tile, offset_paths, smooth_labels, tilt_of, gray_of, axis_curves, period_of_curve, strip_tilt, at_most, role_names
+from telios_worker.tile import border, centered, centered_x, lay_tile, seam_of, tile, offset_paths, smooth_labels, tilt_of, gray_of, axis_curves, period_of_curve, strip_tilt, at_most, tile_ground
 
 
 def pattern(cw, ch, w, h, seed=3):
@@ -35,13 +35,13 @@ def with_margin(img, deg=0.0):
     return big
 
 
-def run(img):
+def run(img, keep_ground=False):
     with tempfile.TemporaryDirectory() as d:
         src = os.path.join(d, 'scan.png')
         Image.fromarray(img).save(src)
         out = os.path.join(d, 'out')
         os.makedirs(out)
-        info = tile(src, out, 8)
+        info = tile(src, out, 8, keep_ground=keep_ground)
         with open(os.path.join(out, 'layered.svg')) as f:
             info['svg'] = f.read()
         return info
@@ -56,7 +56,9 @@ class Tile(unittest.TestCase):
         self.assertLess(abs(info['tilt']), 0.3)
         self.assertLess(info['seam'], 1.3)
         self.assertIn(f'viewBox="0 0 {info["size"][0]} {info["size"][1]}"', info['svg'])
-        self.assertEqual(len(info['layers']), 3)
+        # its three colors, the brown ground between the shapes taken out: two layers are left
+        self.assertEqual(len(info['layers']), 2)
+        self.assertEqual(len(run(with_margin(pattern(60, 80, 600, 560)), keep_ground=True)['layers']), 3)
 
     def test_a_scan_turned_a_little_is_levelled_before_the_repeat_is_cut(self):
         for deg in (1.5, -1.2):
@@ -127,22 +129,24 @@ class Colors(unittest.TestCase):
         self.assertEqual(len(out), 3)
         self.assertEqual(len(at_most(pal[:2], lab(im), 3)), 2)
 
-    def test_the_colors_are_named_by_the_area_they_cover(self):
-        self.assertEqual(role_names([0.5]), ['Color'])
-        self.assertEqual(role_names([0.1, 0.6]), ['Secondary', 'Primary'])
-        self.assertEqual(role_names([0.2, 0.7, 0.1]), ['Secondary', 'Primary', 'Accent'])
-
-    def test_a_pattern_tile_has_at_most_three_colors_named_primary_secondary_accent(self):
+    def test_a_pattern_tile_has_at_most_three_colors_and_its_background_taken_out(self):
         info = run(with_margin(pattern(60, 80, 600, 560)))
-        names = [l['name'] for l in layers_of(info)]
-        self.assertLessEqual(len(names), 3)
-        self.assertEqual(sorted(names), sorted(role_names([1.0 - i * 0.1 for i in range(len(names))])))
+        self.assertLessEqual(len(layers_of(info)), 3)
+        self.assertIsNotNone(info['ground'], 'the brown that runs between the shapes is the ground')
+        self.assertNotIn(info['ground']['color'], [l['color'] for l in layers_of(info)])
+
+    def test_a_pattern_keeps_its_background_when_asked(self):
+        info = run(with_margin(pattern(60, 80, 600, 560)), keep_ground=True)
+        self.assertIsNone(info['ground'])
+        self.assertLessEqual(len(layers_of(info)), 3)
+
+    def test_the_squares_of_a_checkerboard_are_not_a_background(self):
+        band = (np.indices((40, 40)).sum(0) // 10 % 2).astype(int)
+        self.assertIsNone(tile_ground(band, 2))
 
     def test_a_border_has_at_most_three_colors_and_its_background_taken_out(self):
         info = run_border(with_margin(on_ground(100, 120, 640)))
-        names = [l['name'] for l in layers_of(info)]
-        self.assertLessEqual(len(names), 3)
-        self.assertTrue(set(names) <= {'Primary', 'Secondary', 'Accent'})
+        self.assertLessEqual(len(layers_of(info)), 3)
         self.assertIsNotNone(info['ground'])
         self.assertEqual(info['ground']['color'][0:1], '#')
         self.assertNotIn(info['ground']['color'], [l['color'] for l in layers_of(info)])

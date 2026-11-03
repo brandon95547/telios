@@ -316,7 +316,7 @@ async function thinCheck(svg: string): Promise<AppCheck> {
 function paletteCheck(palette: PaletteColor[], off: { share: number; colors: string[] }, piece: PieceClass): AppCheck {
   const label = 'Few flat colors';
   const most = colorsFor(piece);
-  if (palette.length > most) return { id: 'palette', label, ok: false, detail: `The palette has ${palette.length} colors; ${piece === 'border' || piece === 'tile' ? `a ${piece === 'tile' ? 'pattern tile' : 'border'} takes at most ${most} (a primary, a secondary and an accent, which an author can recolor)` : `an app takes at most ${most} flat colors`} (each is a layer).` };
+  if (palette.length > most) return { id: 'palette', label, ok: false, detail: `The palette has ${palette.length} colors; ${piece === 'border' || piece === 'tile' ? `a ${piece === 'tile' ? 'pattern tile' : 'border'} takes at most ${most} (an app recolors them together with one hue adjustment)` : `an app takes at most ${most} flat colors`} (each is a layer).` };
   if (off.share > 0.004) return { id: 'palette', label, ok: false, detail: `${(off.share * 100).toFixed(1)}% of the flat areas are colors outside the palette${off.colors.length ? ` (${off.colors.join(', ')})` : ''}: remove opacity, masks or blends, or add the color to the palette.` };
   return { id: 'palette', label, ok: true, detail: `${palette.length} flat color${palette.length === 1 ? '' : 's'}` };
 }
@@ -345,7 +345,7 @@ export async function appReady(svg: string, layout: Layout | null, palette: Pale
   }
   if (piece === 'frame') checks.push(await windowCheck(svg));
   checks.push(await thinCheck(svg), paletteCheck(palette, off, piece));
-  if (piece !== 'tile') checks.push(await backgroundCheck(svg));
+  checks.push(await backgroundCheck(svg));
   return { piece, ok: reportOk(checks), checks };
 }
 

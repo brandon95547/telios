@@ -150,12 +150,12 @@ drawn and what it must pass:
   portrait through square to landscape. It is built from parts (`frameKit` in the drawing library:
   a corner, one unit of each edge, an optional ornament kept in the middle of an edge), so its fitting
   data is made for it and cannot disagree with the drawing.
-- A **border** or a **pattern tile** has at most three colors, named *Primary*, *Secondary* and *Accent*
-  by the area each covers (a lone color is just *Color*), so an app can offer them as three colors to
-  recolor; a border has no background of its own. A **Trace** made for a border or a tile does this
-  too: it merges its nearest colors down to three, and takes out the color behind a border's design
-  (choose Background → Keep original to keep it; a rule along the border's own edges is never taken
-  for a background).
+- A **border** or a **pattern tile** has at most three colors and no background of its own (the page
+  shows through between the shapes), so an app can take it as one SVG and recolor it all at once with a
+  hue adjustment. A **Trace** made for a border or a tile does this too: it merges its nearest colors
+  down to three, and takes out the color behind the design (choose Background → Keep original to keep
+  it; a rule along a border's own edges, and the squares of a checkerboard, are never taken for a
+  background).
 - An **object** is drawn whole on a canvas of its own shape with a little spare round it, and is
   trimmed to its drawing in its package. None of a frame's fitting is asked of it.
 

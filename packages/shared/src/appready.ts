@@ -32,19 +32,10 @@ export function kindFor(target: Target | undefined, read: Kind): Kind {
   }
 }
 
-/** How many flat colors a piece may have: a border or a pattern tile at most three, which an app lets its author recolor as a primary, a secondary and an accent; a frame, a corner or an object, eight. */
+/** How many flat colors a piece may have: a border or a pattern tile at most three, so one hue adjustment recolors them together and well; a frame, a corner or an object, eight. */
 export const FEW_COLORS = 3;
 export const MAX_COLORS = 8;
 export const colorsFor = (piece: PieceClass) => (piece === 'border' || piece === 'tile' ? FEW_COLORS : MAX_COLORS);
-
-/** What each color of a border or a tile is called, by the area it covers: the most is Primary, the next Secondary, the least Accent (a lone color is Color). `shares` is the area of each, in any order; the names come back in the same order. */
-export function roleNames(shares: number[]): string[] {
-  if (shares.length === 1) return ['Color'];
-  const roles = ['Primary', 'Secondary', 'Accent'];
-  const names: string[] = new Array(shares.length).fill('');
-  [...shares.keys()].sort((a, b) => shares[b] - shares[a]).forEach((i, n) => { names[i] = roles[n] ?? `Color ${n + 1}`; });
-  return names;
-}
 
 /** A frame's master is square, about this many design units a side: it fits every page size, square and landscape too. */
 export const FRAME_MASTER = 1800;

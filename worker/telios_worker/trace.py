@@ -125,7 +125,19 @@ def palette_for(rgb, labs, shape, palette, paper, keep_background=False, max_col
     return pal[order], [names[i] for i in order]
 
 
-def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0):
+SMOOTH_SIGMA = (0, 1.5, 3.5)   # how far (px, at the traced size) each Clean up level evens the colors' outlines: off, light, strong
+
+
+def smoothed(band, shape, k, sigma):
+    """The colors' outlines evened out: each pixel takes the color most of its neighborhood is (a Gaussian vote), so a wobble in an edge,
+    a nick, or a hairline gap closes, at the cost of detail finer than `sigma`."""
+    votes = np.stack([ndimage.gaussian_filter(((band == i) & shape).astype(np.float32), sigma) for i in range(k)])
+    out = votes.argmax(0)
+    out[~shape] = 0
+    return out
+
+
+def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0):
     im, k, (w0, h0) = prepare(source)
     rgba = np.asarray(im).astype(np.float64)
     h, w = rgba.shape[:2]
@@ -138,13 +150,15 @@ def trace(source, outdir, palette=None, color_mode='full', keep_background=False
     band[shape] = vq(labs[shape], lab(pal))[0]
     band = majority(band, len(pal), 5)
     band[~shape] = 0
+    if smooth:
+        band = smoothed(band, shape, len(pal), SMOOTH_SIGMA[min(smooth, 2)] * max(1.0, k))
 
     if color_mode == 'neutral':
         colors = [hex_color(gray_of(c)) for c in pal]
     else:
         colors = [hex_color(c) for c in pal]
     names = [n or color_name(parse_hex(c)) for n, c in zip(names, colors)]
-    layers = build_layers(band, shape, colors, names, speckle=int(4 * max(1, k)))
+    layers = build_layers(band, shape, colors, names, speckle=int(4 * max(1, k) * (2 if smooth == 2 else 1)))
     svg = layered_svg(layers, w, h, w0, h0, title)
     with open(os.path.join(outdir, 'layered.svg'), 'w') as f:
         f.write(svg)

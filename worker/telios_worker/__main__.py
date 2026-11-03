@@ -80,6 +80,7 @@ def main(argv=None):
     t.add_argument('--keep-background', action='store_true')
     t.add_argument('--max-colors', type=int, default=8)
     t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')
+    t.add_argument('--smooth', type=int, default=0, choices=[0, 1, 2], help='how far the colors\' outlines are evened out: off, light, strong')
     t.add_argument('--title', default='Telios')
     ti = sub.add_parser('tile')
     ti.add_argument('source')
@@ -88,7 +89,7 @@ def main(argv=None):
     ti.add_argument('--twins', type=float, default=9.0, help='Lab distance under which two colors are one')
     ti.add_argument('--blend', type=float, default=5.0, help='Lab distance from the line between two colors under which a color is their blend')
     ti.add_argument('--title', default='Telios')
-    ti.add_argument('--keep-ground', action='store_true', help='a border keeps the color behind its design (by default it is taken out)')
+    ti.add_argument('--keep-ground', action='store_true', help='a border or a pattern keeps the color behind its design (by default it is taken out)')
     ti.add_argument('--border', action='store_true', help='a strip that repeats along its length, not a pattern that repeats both ways')
     r = sub.add_parser('rebuild')
     r.add_argument('source')
@@ -148,14 +149,14 @@ def main(argv=None):
             from .trace import trace
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
-            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge))
+            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth))
         elif args.cmd == 'tile':
             from .tile import border, tile
             os.makedirs(args.outdir, exist_ok=True)
             if args.border:
                 out(border(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend, args.keep_ground))
             else:
-                out(tile(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend))
+                out(tile(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend, args.keep_ground))
         elif args.cmd == 'rebuild':
             from .rebuild import rebuild
             os.makedirs(args.outdir, exist_ok=True)

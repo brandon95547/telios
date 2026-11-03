@@ -8,10 +8,10 @@
 //               that does not repeat is refused, in words. The tile's fitting data is written (layout.json), the
 //               preview is the tile repeated 2 × 2 and a fit sheet shows it 3 × 3;
 //   a border    the same for a strip (`tile --border`): turned to run level, straightened, one exact unit cut along
-//               its length, wrapped at its ends only; the color behind its design is taken out unless Background is Keep original.
+//               its length, wrapped at its ends only.
 //
-// A pattern tile and a border have at most three colors (FEW_COLORS), named Primary, Secondary and Accent by the area each covers,
-// so an app can offer them as three colors to recolor. An object keeps up to TRACE_MAX_COLORS and is named by what the color looks like. Its fitting data says the whole unit is the repeat; the
+// A pattern tile and a border have at most three colors, and the color behind their design is taken out (unless Background is Keep
+// original), so an app can take the SVG with no background and recolor it with one hue adjustment. An object keeps up to TRACE_MAX_COLORS. Its fitting data says the whole unit is the repeat; the
 //               preview and the fit sheet lay it 3 and 4 times along.
 //
 // It runs on the CPU, a few at a time.
@@ -44,7 +44,7 @@ interface Tiled extends Traced {
 /** A worker's error in plain words: its Python type name is not for the person. */
 const plain = (e: unknown) => (e as Error).message.replace(/^\w*Error:\s*/, '');
 
-/** What a tile is laid on for its preview: the color that fills most of an opaque tile; for a border whose background was taken out, the ground picked (white, black or green) or a neutral that the design shows against. */
+/** What a tile is laid on for its preview: the color that fills most of an opaque tile; for a border or tile whose background was taken out, the ground picked (white, black or green) or a neutral that the design shows against. */
 function previewGround(layers: Layer[], cleared: string | null): string {
   if (cleared === null) return [...layers].sort((a, b) => b.share - a.share)[0].color;
   if (cleared in BACKGROUND_HEX && cleared !== 'transparent' && cleared !== 'original') return BACKGROUND_HEX[cleared as keyof typeof BACKGROUND_HEX];
@@ -80,8 +80,8 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     try {
       // an object keeps the picture's own ground only where that was asked for
       traced = tiled
-        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border', ...(o.background === 'original' ? ['--keep-ground'] : [])] : [])], 10 * 60_000)
-        : await python<Traced>(['trace', source, scratch, '--mode', 'full', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
+        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : []), ...(tiled && o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000)
+        : await python<Traced>(['trace', source, scratch, '--mode', 'full', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), '--smooth', String(['off', 'light', 'strong'].indexOf(o.cleanup)), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
     } catch (e) {
       throw new Error(plain(e));
     }
@@ -110,7 +110,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
       const ground = previewGround(traced.layers, t.ground ? o.background : null);
       png = strip ? await repeated(svg, 3, 1, ground, PREVIEW_SIDE) : await repeated(svg, 2, 2, ground, PREVIEW_SIDE);
       sheet = strip ? await repeated(svg, 4, 1, ground, SHEET_SIDE) : await repeated(svg, 3, 3, ground, SHEET_SIDE);
-      if (t.ground) warnings.push(`The border's background (${t.ground.color}, ${Math.round(t.ground.share * 100)}% of the unit) was taken out, leaving the design on a clear ground. If it needs it, choose Background → Keep original.`);
+      if (t.ground) warnings.push(`The ${strip ? "border's" : "pattern's"} background (${t.ground.color}, ${Math.round(t.ground.share * 100)}% of the ${strip ? 'unit' : 'tile'}) was taken out, leaving the design on a clear ground. If it needs it, choose Background → Keep original.`);
       if (t.seam > TILE_SEAM_MAX) warnings.push(`The tile's edges do not meet cleanly (the colors change ${t.seam}× as much across them as inside): the picture may not repeat exactly.`);
       if (Math.min(...t.repeatStrength) < TILE_STRENGTH_MIN) warnings.push('The repeat is loose: copies of the pattern in the picture differ a good deal, so the tile is an average of them.');
     } else {

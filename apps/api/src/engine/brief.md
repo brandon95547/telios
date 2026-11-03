@@ -137,7 +137,7 @@ with the measurement and what to change:
 - **A clear ground.** Draw no background, paper or floor: where nothing is drawn it is transparent.
 - **Lines that hold.** No line thinner than about 0.25% of the canvas's long side (4 units on a
   1600 canvas): finer ones vanish at phone and tile size. Give detail weight, or leave it out.
-- **Few flat colors.** At most eight, each in the palette, no opacity, no blends. A **border or a pattern tile has at most three**: one main color, a second, and an accent (an author recolors them as primary, secondary and accent), so choose the three that carry the design.
+- **Few flat colors.** At most eight, each in the palette, no opacity, no blends. A **border or a pattern tile has at most three**, drawn with no background of its own (the page shows through between the shapes), so an app can recolor it all at once with one hue adjustment; choose the three that carry the design.
 - **The right layout** for the kind, which the checks read: frames, borders and tiles are also fitted
   and joined the way an app will.
 

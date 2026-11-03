@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -71,12 +71,21 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <select value={options.madeFor} onChange={(e) => {
               const v = e.target.value as RestyleOptions['madeFor'];
               set('madeFor', v);
-              // a border's own background is taken out unless Keep original is chosen again
-              if (v === 'border' && options.background === 'original') set('background', 'transparent');
+              // a border's or a pattern's own background is taken out unless Keep original is chosen again
+              if ((v === 'border' || v === 'pattern') && options.background === 'original') set('background', 'transparent');
             }}>
               {TRACE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, named Primary, Secondary and Accent by the area each covers.' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, named Primary, Secondary and Accent by the area each covers, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</div>
+            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</div>
+          </label>
+        )}
+        {traced && options.madeFor === 'object' && (
+          <label className="field">
+            <div className="label">Clean up</div>
+            <select value={options.cleanup} onChange={(e) => set('cleanup', e.target.value as RestyleOptions['cleanup'])}>
+              {CLEANUPS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <div className="sub">{CLEANUPS.find((c) => c.value === options.cleanup)?.hint} A repeating border or tile is already cleaned by averaging every copy of its repeat.</div>
           </label>
         )}
         {byModel && (

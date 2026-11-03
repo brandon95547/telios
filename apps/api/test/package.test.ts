@@ -86,26 +86,3 @@ test('a piece drawn before the checks existed still packages, and says so', asyn
   assert.deepEqual(m.layout.repeat, { x: [20, 100] });
   assert.match(fs.readFileSync(files.find((f) => f.name === 'README.txt')!.src, 'utf8'), /No app-ready checks were recorded/);
 });
-
-test('a border\'s layers are named Primary, Secondary and Accent by the area each covers, in the SVG and the manifest', async () => {
-  const three = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="100" height="80" viewBox="0 0 100 80"><title>Strip</title>'
-    + '<g id="layer-1-black" inkscape:groupmode="layer" inkscape:label="black" fill="#111111"><path d="M0 0h20v20H0z"/></g>'
-    + '<g id="layer-2-gold" inkscape:groupmode="layer" inkscape:label="gold" fill="#b8902a"><path d="M30 0h40v20H30z"/></g>'
-    + '<g id="layer-3-red" inkscape:groupmode="layer" inkscape:label="dark red" fill="#8a2a20"><path d="M80 0h10v20H80z"/></g></svg>';
-  const r = result('xpkg4', 'border', { form: 'border', size: [100, 80], fit: 'tile', repeat: { x: [0, 100] } });
-  const dir = resultDir('xpkg4');
-  fs.writeFileSync(path.join(dir, 'result.svg'), three);
-  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
-    kind: 'border', rendering: 'flat', colorMode: 'full',
-    palette: [{ hex: '#111111', name: 'black' }, { hex: '#b8902a', name: 'gold' }, { hex: '#8a2a20', name: 'dark red' }],
-    layers: [{ id: 'layer-1-black', color: '#111111', name: 'black', share: 0.2 }, { id: 'layer-2-gold', color: '#b8902a', name: 'gold', share: 0.6 }, { id: 'layer-3-red', color: '#8a2a20', name: 'dark red', share: 0.1 }],
-  }));
-  const files = await writePackage(r, 'Strip', tmp());
-  const m = manifestOf(files);
-  assert.deepEqual(m.layers.map((l: { name: string }) => l.name), ['Secondary', 'Primary', 'Accent']);
-  assert.deepEqual(m.palette.map((c: { name: string }) => c.name), ['Secondary', 'Primary', 'Accent']);
-  const svg = fs.readFileSync(files.find((f) => f.name.endsWith('.svg'))!.src, 'utf8');
-  assert.match(svg, /id="layer-2-primary"[^>]*inkscape:label="Primary"[^>]*fill="#b8902a"/);
-  assert.match(svg, /inkscape:label="Accent"/);
-  assert.doesNotMatch(svg, /inkscape:label="(black|gold|dark red)"/);
-});

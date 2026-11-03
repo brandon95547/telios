@@ -33,9 +33,9 @@ TILE_MAX = 2600
 BLEND = 5.0             # a color this near (Lab) the line between two others, between them, is the blend where they meet, not a color
 TWINS = 9.0             # two colors this near (Lab) are one
 MOST = 3                # a pattern tile or a border has at most this many colors
-ROLES = ('Primary', 'Secondary', 'Accent')
 EDGE = 0.04             # a border's ground is the color along its top and bottom edges, this share of its height each
 GROUND_SHARE = 0.6      # …when it holds this much of them
+TILE_GROUND_SHARE = 0.35  # a pattern's ground covers at least this much of its tile
 MIDDLE_SHARE = 0.2      # …and this much of the strip's middle half, between its motifs
 SMOOTH = 1.1             # how far (in the picture's own pixels) the colors' outlines are smoothed
 
@@ -308,16 +308,6 @@ def at_most(pal, labs, n):
     return out[np.argsort(lab(out)[:, 0])]
 
 
-def role_names(shares):
-    """One name for each color by the area it covers: the most is Primary, the next Secondary, the least Accent; a lone color is just Color."""
-    if len(shares) == 1:
-        return ['Color']
-    names = [None] * len(shares)
-    for role, i in zip(ROLES, sorted(range(len(shares)), key=lambda k: -shares[k])):
-        names[i] = role
-    return names
-
-
 def ground_of(band, k):
     """The index of the color that is a border's background: the one along its top and bottom edges that also fills the gaps in its
     middle. A rule along the edges (a band that is the border's own) is not in the middle, so it is kept. None when there is none."""
@@ -332,7 +322,24 @@ def ground_of(band, k):
     return best if (middle == best).mean() >= MIDDLE_SHARE else None
 
 
-def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND):
+def tile_ground(band, k):
+    """The index of the color that is a pattern's background: a color of most of the tile that runs unbroken across the repeated surface
+    (one connected region when the tile is laid out round, whose gaps are the design). Checker squares are separate, so no color of a
+    checkerboard is a ground. None when there is none."""
+    H, W = band.shape
+    for i in sorted(range(k), key=lambda c: -(band == c).mean()):
+        share = float((band == i).mean())
+        if share < TILE_GROUND_SHARE:
+            break
+        lab_, n = ndimage.label(np.tile(band == i, (3, 3)))
+        centre = lab_[H:2 * H, W:2 * W]
+        sizes = np.bincount(centre[band == i], minlength=n + 1)
+        if int((sizes > 0.01 * H * W).sum()) == 1:
+            return i
+    return None
+
+
+def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND, keep_ground=False):
     im = load_rgba(source)
     rgba = np.asarray(im)
     x0, y0, x1, y1 = design_box(rgba)
@@ -362,15 +369,30 @@ def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND)
     soft = tile_rgb
     labs = lab(soft)
     pal, _ = palette_for(soft, labs, np.ones((H, W), bool), None, {'kind': 'none'}, False, max_colors, 1)
-    pal = at_most(clean_palette(pal, labs, blend, twins), labs, MOST)
+    # a ground takes a place among the colors, so one more is kept until it is found and taken out
+    pal = at_most(clean_palette(pal, labs, blend, twins), labs, MOST if keep_ground else MOST + 1)
     band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     band = smooth_labels(band, len(pal), SMOOTH * S)
     seam = seam_of(band)
+    ground = None if keep_ground else tile_ground(band, len(pal))
+    removed = None
+    shape = np.ones((H, W), bool)
+    if ground is not None:
+        removed = {'color': hex_color(pal[ground]), 'share': round(float((band == ground).mean()), 3)}
+        keep = [i for i in range(len(pal)) if i != ground]
+        remap = np.zeros(len(pal), int)
+        remap[keep] = np.arange(len(keep))
+        shape = band != ground
+        band = remap[band]
+        pal = pal[keep]
+    elif len(pal) > MOST:
+        pal = at_most(pal, labs, MOST)
+        band = smooth_labels(vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W), len(pal), SMOOTH * S)
     colors = [hex_color(c) for c in pal]
-    names = role_names([float((band == i).sum()) for i in range(len(pal))])
+    names = [color_name(tuple(c)) for c in pal]
     # traced with its own edges wrapped round it, so what leaves one edge is what enters the opposite
     pad = max(8, int(0.06 * min(W, H)))
-    layers = build_layers(np.pad(band, pad, mode='wrap'), np.ones((H + 2 * pad, W + 2 * pad), bool), colors, names, speckle=int(4 * max(1, S)))
+    layers = build_layers(np.pad(band, pad, mode='wrap'), np.pad(shape, pad, mode='wrap'), colors, names, speckle=int(4 * max(1, S)))
     svg = tile_svg(layers, W, H, pad, title)
     with open(os.path.join(outdir, 'layered.svg'), 'w') as f:
         f.write(svg)
@@ -379,7 +401,7 @@ def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND)
     return {
         'size': [W, H], 'cell': [round(cw, 2), round(ch, 2)], 'tilt': round(float(tilt), 3), 'lattice': 'half-drop' if half > 0.5 else 'grid',
         'perCell': 2 if half > 0.5 else 1, 'repeatStrength': [round(rx, 3), round(ry, 3)], 'copies': copies, 'symmetry': round(symmetry, 3),
-        'slid': [sx, sy], 'seam': seam, 'layers': summary(layers), 'bytes': len(svg),
+        'slid': [sx, sy], 'seam': seam, 'layers': summary(layers), 'bytes': len(svg), 'ground': removed,
     }
 
 
@@ -493,7 +515,7 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
             band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     seam = seam_x(band)
     colors = [hex_color(c) for c in pal]
-    names = role_names([float(((band == i) & shape).sum()) for i in range(len(pal))])
+    names = [color_name(tuple(c)) for c in pal]
     pad = max(8, int(0.12 * W))
     layers = build_layers(np.pad(band, ((0, 0), (pad, pad)), mode='wrap'), np.pad(shape, ((0, 0), (pad, pad)), mode='wrap'), colors, names, speckle=int(4 * max(1, S)))
     svg = tile_svg(layers, W, H, pad, title, pad_y=0)

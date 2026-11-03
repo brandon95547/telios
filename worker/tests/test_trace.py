@@ -22,3 +22,36 @@ class MergedColors(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CleanUp(unittest.TestCase):
+    def test_a_wobbling_edge_is_evened_out_by_the_clean_up_levels(self):
+        import os
+        import tempfile
+        from PIL import Image
+        from telios_worker.trace import smoothed, trace
+        rng = np.random.default_rng(1)
+        yy, xx = np.mgrid[0:400, 0:400].astype(np.float32)
+        r = 120 + rng.normal(0, 1, 400)[(np.arctan2(yy - 200, xx - 200) * 200 / np.pi).astype(int) % 400] * 4
+        img = np.full((400, 400, 3), 255, np.uint8)
+        img[np.hypot(xx - 200, yy - 200) < r] = (40, 40, 60)
+
+        def paths(level):
+            with tempfile.TemporaryDirectory() as d:
+                src = os.path.join(d, 's.png')
+                Image.fromarray(img).save(src)
+                trace(src, d, None, 'full', False, 3, 'T', 20, level)
+                svg = open(os.path.join(d, 'layered.svg')).read()
+            return len(svg)
+        off, light, strong = paths(0), paths(1), paths(2)
+        self.assertLess(light, off)
+        self.assertLess(strong, light)
+
+    def test_smoothing_keeps_what_is_not_art_outside_the_shape(self):
+        from telios_worker.trace import smoothed
+        band = np.zeros((20, 20), int)
+        band[5:15, 5:15] = 1
+        shape = band > 0
+        out = smoothed(band, shape, 2, 1.5)
+        self.assertTrue((out[~shape] == 0).all())
+        self.assertTrue((out[8:12, 8:12] == 1).all())
