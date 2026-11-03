@@ -174,6 +174,32 @@ class Colors(unittest.TestCase):
         self.assertEqual(len(layers_of(info)), 1, 'only the gold is left')
         self.assertGreater(int(layers_of(info)[0]['color'][1:3], 16), 180)
 
+    def test_a_border_is_cut_to_its_design_when_the_background_left_empty_rows(self):
+        h, w, cw = 120, 640, 100
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        img = np.full((h, w, 3), (238, 232, 214), np.float32)
+        u = np.mod(xx, cw)
+        img[((u - cw * 0.5) ** 2 + (yy - h / 2) ** 2) < (h * 0.22) ** 2] = (150, 40, 35)
+        img[(np.abs(u - cw * 0.2) < 4) & (np.abs(yy - h * 0.5) < h * 0.25)] = (45, 45, 50)
+        info = run_border(with_margin(np.clip(img + np.random.default_rng(4).normal(0, 3, img.shape), 0, 255).astype(np.uint8)))
+        self.assertIsNotNone(info['ground'])
+        # the design is about half the strip's height: the rest was the ground's, and is cut off
+        self.assertLess(info['size'][1], 0.7 * 120 * 2)
+        self.assertIn(f'viewBox="0 0 {info["size"][0]} {info["size"][1]}"', info['svg'])
+
+    def test_a_background_that_the_motifs_nearly_cover_is_found_at_the_edge(self):
+        h, w, cw = 120, 640, 100
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        img = np.full((h, w, 3), (10, 8, 6), np.float32)
+        u = np.mod(xx, cw)
+        # gold shapes that run from near the top edge to near the bottom one, so black is only about a third of any row inside them
+        img[(u < 68) & (yy > 5) & (yy < h - 6)] = (200, 160, 90)
+        img[((u - 34) ** 2 + (yy - h / 2) ** 2) < (h * 0.12) ** 2] = (130, 52, 35)
+        info = run_border(with_margin(np.clip(img + np.random.default_rng(6).normal(0, 3, img.shape), 0, 255).astype(np.uint8)))
+        self.assertIsNotNone(info['ground'], 'the black at the very edge is the ground')
+        self.assertLess(int(info['ground']['color'][1:3], 16), 40)
+        self.assertLessEqual(len(layers_of(info)), 2)
+
     def test_a_rule_along_the_edges_is_the_borders_own_and_not_its_background(self):
         info = run_border(with_margin(strip(100, 120, 640)))
         self.assertIsNone(info['ground'])

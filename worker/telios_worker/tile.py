@@ -35,6 +35,7 @@ TWINS = 9.0             # two colors this near (Lab) are one
 MOST = 3                # a pattern tile or a border has at most this many colors
 EDGE_IN = (0.08, 0.12)  # a border's ground is read this far in from its top and bottom edges (shares of its height)
 EDGE_OUT = 0.05         # a strip this thin along those edges is a margin, not design
+EDGE_FULL = 0.8         # a row is one color when that color fills this much of it
 MARGIN_SHARE = 0.10     # …when it is under this share of the unit
 GROUND_SHARE = 0.6      # …when it holds this much of them
 TILE_GROUND_SHARE = 0.35  # a pattern's ground covers at least this much of its tile
@@ -310,19 +311,52 @@ def at_most(pal, labs, n):
     return out[np.argsort(lab(out)[:, 0])]
 
 
+def edge_color(band, k, top):
+    """What a border's top (or bottom) edge is: (color, strip), the color that fills nearly the whole of the outermost row, and `strip`, how
+    many rows from the edge are a margin strip (a thin line of paper that a different color, the border's ground, follows). (None, 0) when
+    the outermost row is not one color."""
+    rows = band if top else band[::-1]
+    H, W = rows.shape
+
+    def mode(r):
+        c = np.bincount(rows[r], minlength=k)
+        i = int(c.argmax())
+        return i, float(c[i]) / W
+
+    e, share = mode(0)
+    if share < EDGE_FULL:
+        return None, 0
+    t = 1
+    while t < H and mode(t)[0] == e and mode(t)[1] >= EDGE_FULL:
+        t += 1
+    if t <= max(2, int(EDGE_OUT * H)) and t < H:
+        c2, s2 = mode(t)
+        if c2 != e and s2 >= EDGE_FULL:
+            return c2, t
+    return e, 0
+
+
 def ground_of(band, k):
-    """The index of the color that is a border's background: the one just inside its top and bottom edges that also fills the gaps in its
-    middle. It is read a little in from the edge (EDGE_IN), because a scan's paper margin or a thin line right at the edge would otherwise
-    be taken for it. A rule that is the border's own, and not in the middle, is kept. None when there is none."""
+    """A border's background: (index, rows of margin strip above, rows below), or (None, 0, 0). It is the color that fills the very edge
+    of the strip (above any thin strip of paper at the rim, where a margin was left) and also fills the gaps in its middle; or, where no
+    one color fills the edge (motifs touch it), the color just inside the edges (EDGE_IN) that does. A rule along the edges that is the
+    border's own is not in the middle, so it is kept."""
     h = band.shape[0]
+    middle = band[int(0.25 * h):int(0.75 * h)]
+    ok = lambda c: c is not None and (middle == c).mean() >= MIDDLE_SHARE
+    found = [(c, t, side) for (c, t), side in ((edge_color(band, k, True), 'top'), (edge_color(band, k, False), 'bottom')) if ok(c)]
+    if found:
+        best = max(found, key=lambda f: (middle == f[0]).mean())[0]
+        top = next((t for c, t, side in found if side == 'top' and c == best), 0)
+        bottom = next((t for c, t, side in found if side == 'bottom' and c == best), 0)
+        return best, top, bottom
     a, b = int(round(EDGE_IN[0] * h)), max(int(round(EDGE_IN[1] * h)), int(round(EDGE_IN[0] * h)) + 2)
     edge = np.concatenate([band[a:b].ravel(), band[h - b:h - a].ravel()])
     counts = np.bincount(edge, minlength=k)
     best = int(counts.argmax())
-    if counts[best] < GROUND_SHARE * edge.size:
-        return None
-    middle = band[int(0.25 * h):int(0.75 * h)]
-    return best if (middle == best).mean() >= MIDDLE_SHARE else None
+    if counts[best] >= GROUND_SHARE * edge.size and ok(best):
+        return best, 0, 0
+    return None, 0, 0
 
 
 def margin_colors(band, k, skip):
@@ -517,7 +551,7 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
     # smoothed along its length with its ends wrapped, but not across (its top and bottom are the strip's own edges)
     votes = np.stack([ndimage.gaussian_filter((band == i).astype(np.float32), SMOOTH * S, mode=('nearest', 'wrap')) for i in range(len(pal))])
     band = votes.argmax(0)
-    ground = None if keep_ground else ground_of(band, len(pal))
+    ground, top_strip, bottom_strip = (None, 0, 0) if keep_ground else ground_of(band, len(pal))
     removed = None
     if ground is not None:
         margins = margin_colors(band, len(pal), ground)
@@ -527,6 +561,10 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
         remap = np.zeros(len(pal), int)
         remap[keep] = np.arange(len(keep))
         shape = ~np.isin(band, drop)
+        # a strip of paper along the rim goes too, whatever else its color is also used for in the design
+        shape[:top_strip] = False
+        if bottom_strip:
+            shape[H - bottom_strip:] = False
         band = remap[band]
         pal = pal[keep]
     else:
@@ -534,6 +572,13 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
         if len(pal) > MOST:
             pal = at_most(pal, labs, MOST)
             band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
+    # a border has no empty rows above or below its design (a background taken out leaves them): cut to where it is
+    rows = np.nonzero(shape.any(axis=1))[0]
+    if rows.size and (rows[0] > 0 or rows[-1] < H - 1):
+        r0, r1 = int(rows[0]), int(rows[-1]) + 1
+        H0 = H0 * (r1 - r0) / H
+        band, shape, unit = band[r0:r1], shape[r0:r1], unit[r0:r1]
+        H = r1 - r0
     seam = seam_x(band)
     colors = [hex_color(c) for c in pal]
     names = [color_name(tuple(c)) for c in pal]
