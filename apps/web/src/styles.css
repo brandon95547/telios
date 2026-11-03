@@ -256,7 +256,6 @@ a.button:hover, summary.button:hover { border-color: var(--faint); }
 .carousel-count { font-size: 12.5px; color: var(--soft); }
 .carousel-arrow { width: 44px; height: 44px; border-radius: 50%; font-size: 26px; line-height: 1; padding: 0 0 3px; }
 .tile { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; background: var(--panel); min-width: 0; }
-label.tile { cursor: pointer; }
 .tile.on { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f6faf8; }
 .tile > input[type='checkbox'] { position: absolute; top: 12px; left: 12px; z-index: 1; width: 18px; height: 18px; margin: 0; accent-color: var(--deep); }
 .tile-img { aspect-ratio: 1; display: grid; place-items: center; background: #f4f5f4; border-radius: 6px; overflow: hidden; border: 0; padding: 6px; width: 100%; }
@@ -302,6 +301,14 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .viewer-pair img { margin: 0 auto; max-height: 68vh; object-fit: contain; }
 .viewer-pair .black figcaption { color: #bbb; }
 .viewer-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.input-viewer { width: min(1200px, 100%); }
+.input-stage { display: flex; height: min(72vh, 900px); margin-top: 12px; overflow: auto; background: #f4f5f4; border-radius: 6px; padding: 12px; user-select: none; touch-action: none; }
+.input-stage.is-zoomed { cursor: grab; }
+.input-stage.is-zoomed:active { cursor: grabbing; }
+.input-stage img { display: block; margin: auto; max-width: none; max-height: none; flex: none; }
+.zoom-bar { display: inline-flex; align-items: center; gap: 4px; }
+.zoom-bar .small { min-width: 34px; }
+.zoom-bar .zoom-level { min-width: 58px; font-variant-numeric: tabular-nums; }
 .downloads-inline { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--soft); }
 .downloads-inline a { font-weight: 600; }
 .viewer-settings { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

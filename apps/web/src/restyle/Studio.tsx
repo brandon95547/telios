@@ -7,6 +7,7 @@ import { DownloadMenu } from './DownloadMenu.tsx';
 import { folderToSave, saveResults } from './approve.ts';
 import { Carousel } from './Carousel.tsx';
 import { BatchProgress, TileProgress } from './Progress.tsx';
+import { InputViewer } from './InputViewer.tsx';
 import { Viewer } from './Viewer.tsx';
 
 // What this browser last chose: a convenience, so it may be missing (a private window).
@@ -54,6 +55,7 @@ export function Studio({ health }: { health: Health | null }) {
   const [messages, setMessages] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
+  const [previewing, setPreviewing] = useState<number | null>(null);   // an input picture shown large, by its place among the ready ones
   const [slide, setSlide] = useState(0);   // the page of input pictures the carousel shows
   const [over, setOver] = useState(false);
   const [working, setWorking] = useState(false);
@@ -218,15 +220,18 @@ export function Studio({ health }: { health: Health | null }) {
               status={`${firstShown + 1}–${Math.min(inputs.length, firstShown + INPUTS_PER_PAGE)} of ${inputs.length}`}>
               <div className="tiles inputs">
               {inputs.slice(firstShown, firstShown + INPUTS_PER_PAGE).map((i) => (
-                <label key={i.id} className={`tile ${pickedInputs.has(i.id) ? 'on' : ''}`} title={i.subject ?? i.name}>
+                <div key={i.id} className={`tile ${pickedInputs.has(i.id) ? 'on' : ''}`} title={i.subject ?? i.name}>
                   <input type="checkbox" checked={pickedInputs.has(i.id)} onChange={() => setPickedInputs((s) => toggled(s, i.id))} aria-label={`Tick ${i.name}`} />
-                  <div className="tile-img">
-                    {i.status === 'ready' ? <img src={api.file(`restyle/inputs/${i.id}/thumb.webp`)} alt="" loading="lazy" width={i.size?.[0]} height={i.size?.[1]} />
-                      : i.status === 'failed' ? <span className="tile-error">{i.error}</span> : <div className="spinner" />}
-                  </div>
+                  {i.status === 'ready'
+                    ? (
+                      <button type="button" className="tile-img" onClick={() => setPreviewing(ready.findIndex((x) => x.id === i.id))} aria-label={`Preview ${i.name}`}>
+                        <img src={api.file(`restyle/inputs/${i.id}/thumb.webp`)} alt="" loading="lazy" width={i.size?.[0]} height={i.size?.[1]} />
+                      </button>
+                    )
+                    : <div className="tile-img">{i.status === 'failed' ? <span className="tile-error">{i.error}</span> : <div className="spinner" />}</div>}
                   <div className="tile-name">{i.name}</div>
                   <div className="tile-meta">{i.originalSize ? `${i.originalSize[0]} × ${i.originalSize[1]} · ` : ''}{i.format.toUpperCase()}{i.folder ? ` · ${i.folder}` : ''}</div>
-                </label>
+                </div>
               ))}
               </div>
             </Carousel>
@@ -282,6 +287,9 @@ export function Studio({ health }: { health: Health | null }) {
 
       {viewing !== null && viewable[viewing] && (
         <Viewer results={viewable} index={viewing} setIndex={setViewing} selected={kept} toggle={(id) => setKept((s) => toggled(s, id))} onClose={() => setViewing(null)} />
+      )}
+      {previewing !== null && ready[previewing] && (
+        <InputViewer inputs={ready} index={previewing} setIndex={setPreviewing} selected={pickedInputs} toggle={(id) => setPickedInputs((s) => toggled(s, id))} onClose={() => setPreviewing(null)} />
       )}
     </div>
   );
