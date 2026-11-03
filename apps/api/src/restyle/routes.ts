@@ -9,7 +9,7 @@ import path from 'node:path';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, cleanOptions, drawnByModel, hasPackage, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, cleanOptions, drawnByModel, hasPackage, rotatedStyle, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
@@ -154,7 +154,9 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     if (drawnByModel(options.type) && !provider().provider) return res.status(409).json({ error: provider().error });
     const batchId = newResultId();
     const created: RestyleResult[] = [];
-    for (const input of inputs) {
+    for (const [n, input] of inputs.entries()) {
+      // with Rotate styles on, each picture takes the next style of the list (all its versions the same one), starting over at the end
+      const own = options.rotateStyles ? { ...options, style: rotatedStyle(options.type, n) } : options;
       for (let v = 1; v <= options.variations; v++) {
         const id = newResultId();
         const dir = resultDir(id);
@@ -162,7 +164,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
         const source = path.join(inputDir(input.id), 'source.png');
         fs.copyFileSync(source, path.join(dir, 'source.png'));
         await sharp(source).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(dir, 'original.webp'));
-        const r: RestyleResult = { id, batchId, inputId: input.id, inputName: input.name, folder: input.folder, options, variation: v, status: 'queued', createdAt: new Date().toISOString() };
+        const r: RestyleResult = { id, batchId, inputId: input.id, inputName: input.name, folder: input.folder, options: own, variation: v, status: 'queued', createdAt: new Date().toISOString() };
         saveResult(r);
         created.push(r);
       }

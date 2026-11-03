@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, findStyle, styleChoices, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -36,6 +36,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
+    if (!PICTURE_LED_TYPES.includes(t)) set('rotateStyles', false);
     if (drawnByModel(t) || tracedOnly(t)) set('theme', '');
     if (tracedOnly(t)) set('variations', 1);
     set('madeFor', drawnByModel(t) ? options.madeFor : tracedOnly(t) ? 'object' : 'auto');
@@ -99,8 +100,8 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         )}
         {redraw && <label className="field">
           <div className="label">Illustration style</div>
-          <select value={options.style} onChange={(e) => set('style', e.target.value)}>
-            <option value="">None selected</option>
+          <select value={options.style} disabled={options.rotateStyles} onChange={(e) => set('style', e.target.value)}>
+            <option value="">{options.rotateStyles ? 'Rotating through them' : 'None selected'}</option>
             {CATALOG.artStyles.filter((a) => styleFits(options.type, a.id)).map((a) => (
               <optgroup key={a.id} label={a.label}>
                 <option value={a.id}>{a.label}</option>
@@ -108,8 +109,12 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               </optgroup>
             ))}
           </select>
+          <label className="check" title="Each picture in a batch is drawn in the next style of this list, from the first, and from the first again at the end">
+            <input type="checkbox" checked={options.rotateStyles} onChange={(e) => set('rotateStyles', e.target.checked)} /> Rotate styles
+          </label>
+          {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
           {!type.styles ? null : <div className="sub">Only the styles that suit {type.label.toLowerCase()} are listed.</div>}
-          {wantsStyleReference(options) && health && (
+          {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>
               : <div className="sub warn">{health.comfy.styleReference ? 'This style has no reference picture on this server yet' : 'ComfyUI here has no style-reference files (USO) yet'}, so it is drawn from words alone.</div>

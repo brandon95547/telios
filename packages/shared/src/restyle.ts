@@ -142,6 +142,8 @@ export interface RestyleOptions {
   type: OutputType;
   /** An art style or one of its substyles, by id; '' for none. */
   style: string;
+  /** Each picture of a batch is drawn in the next style of the list (styleChoices), from the first, so the style chosen is not used. */
+  rotateStyles: boolean;
   /** A theme, by id; '' for none. */
   theme: string;
   closeness: Closeness;
@@ -165,7 +167,7 @@ export interface RestyleOptions {
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
-  type: 'illustration', style: '', theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
+  type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
   background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light',
 };
 
@@ -324,6 +326,17 @@ export function styleFits(type: OutputType, id: string) {
   return !!found && (!styles || styles.includes(found.art.id));
 }
 
+/** Every style an output type offers, in the order its dropdown lists them: each art style, then its own substyles. */
+export function styleChoices(type: OutputType): string[] {
+  return CATALOG.artStyles.filter((a) => styleFits(type, a.id)).flatMap((a) => [a.id, ...a.substyles.map((s) => s.id)]);
+}
+
+/** The style for the nth picture of a batch when the styles rotate: the list in turn from the first, and from the first again at its end. */
+export function rotatedStyle(type: OutputType, index: number): string {
+  const list = styleChoices(type);
+  return list.length ? list[((index % list.length) + list.length) % list.length] : '';
+}
+
 export const findTheme = (id: string) => CATALOG.themes.flatMap((g) => g.options).find((o) => o.id === id) ?? null;
 /** An output type's info; a retired one's (a result made before it was dropped) is told by its old name, as drawn like an illustration. */
 export const typeInfo = (type: string): OutputTypeInfo => OUTPUT_TYPES.find((t) => t.value === type)
@@ -338,6 +351,9 @@ export function cleanOptions(raw: any): RestyleOptions {
   const pick = <T extends string>(v: unknown, allowed: readonly T[], d: T): T => (allowed.includes(v as T) ? (v as T) : d);
   o.type = pick(raw?.type, OUTPUT_TYPES.map((t) => t.value), o.type);
   o.style = typeof raw?.style === 'string' && styleFits(o.type, raw.style) ? raw.style : '';
+  // only an illustration has a style to rotate; the rotation gives each picture its own, so none is chosen here
+  o.rotateStyles = raw?.rotateStyles === true && PICTURE_LED_TYPES.includes(o.type);
+  if (o.rotateStyles) o.style = '';
   o.theme = !drawnByModel(o.type) && !tracedOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
