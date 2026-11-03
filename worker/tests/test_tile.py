@@ -200,6 +200,20 @@ class Colors(unittest.TestCase):
         self.assertLess(int(info['ground']['color'][1:3], 16), 40)
         self.assertLessEqual(len(layers_of(info)), 2)
 
+    def test_two_shades_of_one_color_are_one_color_and_the_colors_left_are_far_apart(self):
+        h, w, cw = 120, 640, 100
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        img = np.full((h, w, 3), (238, 232, 214), np.float32)
+        u = np.mod(xx, cw)
+        img[((u - cw * 0.3) ** 2 + (yy - h / 2) ** 2) < (h * 0.22) ** 2] = (160, 40, 30)
+        img[((u - cw * 0.3) ** 2 + (yy - h / 2) ** 2) < (h * 0.1) ** 2] = (133, 50, 41)
+        img[(np.abs(u - cw * 0.75) < 6) & (np.abs(yy - h * 0.5) < h * 0.3)] = (200, 150, 40)
+        info = run_border(with_margin(np.clip(img + np.random.default_rng(8).normal(0, 3, img.shape), 0, 255).astype(np.uint8)))
+        from telios_worker.common import lab
+        cols = [np.array([int(l['color'][i:i + 2], 16) for i in (1, 3, 5)], float) for l in layers_of(info)]
+        self.assertEqual(len(cols), 2, 'one red and the gold, not two reds')
+        self.assertGreater(float(np.linalg.norm(lab(cols[0]) - lab(cols[1]))), 25)
+
     def test_a_rule_along_the_edges_is_the_borders_own_and_not_its_background(self):
         info = run_border(with_margin(strip(100, 120, 640)))
         self.assertIsNone(info['ground'])

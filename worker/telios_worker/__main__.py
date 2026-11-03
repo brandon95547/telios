@@ -86,7 +86,7 @@ def main(argv=None):
     ti.add_argument('source')
     ti.add_argument('outdir')
     ti.add_argument('--max-colors', type=int, default=8)
-    ti.add_argument('--twins', type=float, default=9.0, help='Lab distance under which two colors are one')
+    ti.add_argument('--twins', type=float, default=25.0, help='Lab distance under which two colors are one')
     ti.add_argument('--blend', type=float, default=5.0, help='Lab distance from the line between two colors under which a color is their blend')
     ti.add_argument('--title', default='Telios')
     ti.add_argument('--keep-ground', action='store_true', help='a border or a pattern keeps the color behind its design (by default it is taken out)')

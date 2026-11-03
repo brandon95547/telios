@@ -32,6 +32,7 @@ TILE_MIN = 1600          # a tile is traced at least this big on its longer side
 TILE_MAX = 2600
 BLEND = 5.0             # a color this near (Lab) the line between two others, between them, is the blend where they meet, not a color
 TWINS = 9.0             # two colors this near (Lab) are one
+DISTINCT = 25.0         # the colors of a pattern tile or a border are at least this far apart (Lab): nearer ones are shades of one color, and are one
 MOST = 3                # a pattern tile or a border has at most this many colors
 EDGE_IN = (0.08, 0.12)  # a border's ground is read this far in from its top and bottom edges (shares of its height)
 EDGE_OUT = 0.05         # a strip this thin along those edges is a margin, not design
@@ -392,7 +393,7 @@ def tile_ground(band, k):
     return None
 
 
-def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND, keep_ground=False):
+def tile(source, outdir, max_colors=8, twins=DISTINCT, title='Telios', blend=BLEND, keep_ground=False):
     im = load_rgba(source)
     rgba = np.asarray(im)
     x0, y0, x1, y1 = design_box(rgba)
@@ -510,7 +511,7 @@ def seam_x(band):
     return float(round((across + 0.01) / (inner + 0.01), 3))
 
 
-def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND, keep_ground=False):
+def border(source, outdir, max_colors=8, twins=DISTINCT, title='Telios', blend=BLEND, keep_ground=False):
     """A border (a band or strip) made into one exact unit that repeats along its length, traced to flat color layers. The strip is turned
     to run level (a tall one a quarter turn), levelled by what it leans, its repeat found along its length to a fraction of a pixel, every
     copy of it laid on one unit, and the unit traced with its left and right edges wrapped round it."""
@@ -546,7 +547,7 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
     labs = lab(unit)
     pal, _ = palette_for(unit, labs, np.ones((H, W), bool), None, {'kind': 'none'}, False, max_colors, 1)
     # a ground takes a place among the colors, so one more is kept until it is found and taken out: the border has at most three of its own
-    pal = at_most(clean_palette(pal, labs), labs, MOST if keep_ground else MOST + 1)
+    pal = at_most(clean_palette(pal, labs, blend, twins), labs, MOST if keep_ground else MOST + 1)
     band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     # smoothed along its length with its ends wrapped, but not across (its top and bottom are the strip's own edges)
     votes = np.stack([ndimage.gaussian_filter((band == i).astype(np.float32), SMOOTH * S, mode=('nearest', 'wrap')) for i in range(len(pal))])
