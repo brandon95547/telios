@@ -150,12 +150,18 @@ drawn and what it must pass:
   portrait through square to landscape. It is built from parts (`frameKit` in the drawing library:
   a corner, one unit of each edge, an optional ornament kept in the middle of an edge), so its fitting
   data is made for it and cannot disagree with the drawing.
+- A **border** or a **pattern tile** has at most three colors, named *Primary*, *Secondary* and *Accent*
+  by the area each covers (a lone color is just *Color*), so an app can offer them as three colors to
+  recolor; a border has no background of its own. A **Trace** made for a border or a tile does this
+  too: it merges its nearest colors down to three, and takes out the color behind a border's design
+  (choose Background → Keep original to keep it; a rule along the border's own edges is never taken
+  for a background).
 - An **object** is drawn whole on a canvas of its own shape with a little spare round it, and is
   trimmed to its drawing in its package. None of a frame's fitting is asked of it.
 
 **App-ready checks.** Every render is measured, and what fails goes back to the model as text (so a
 cheaper model can fix it without a human judging a picture): nothing cut off at the canvas edge, a
-clear ground, lines that hold at phone size (not hairlines), at most eight flat colors, and a
+clear ground, lines that hold at phone size (not hairlines), at most eight flat colors (three for a border or a tile), and a
 reasonable file size; for a frame, border or tile also its fitting data, the seams where units
 repeat, the window of a frame, and that every unit stays within about 0.78–1.3 of its size on each of
 twelve book sizes (6×9, 5.5×8.5, 8.5×11, 5×8, 4.25×6.87, 8×10, 8×8, 7×10, 11×8.5, 8.5×8.5, 9×12,

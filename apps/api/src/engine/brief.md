@@ -95,7 +95,7 @@ The color rule was decided in the reading (you are told it); follow it:
   lightness doing the work. Shaded relief gets up to 12 grays (`grays(12)`), light where raised
   and dark where recessed; flat art a few.
 - **Full color**: color is part of the art (multicolored flowers, stained glass, painted details,
-  decorative patterns). Keep the original's palette: six to eight flat colors at most, taken from
+  decorative patterns). Keep the original's palette: six to eight flat colors at most (three for a border or a pattern tile), taken from
   it, chosen to look good on a white page and a colored one. A piece with both (a gilded frame
   wreathed in painted flowers) stays full color, the gold painted with the rest.
 - **One ink** (a woodcut, an engraving, line art): the ink, plus the paper only where the design
@@ -137,7 +137,7 @@ with the measurement and what to change:
 - **A clear ground.** Draw no background, paper or floor: where nothing is drawn it is transparent.
 - **Lines that hold.** No line thinner than about 0.25% of the canvas's long side (4 units on a
   1600 canvas): finer ones vanish at phone and tile size. Give detail weight, or leave it out.
-- **Few flat colors.** At most eight, each in the palette, no opacity, no blends.
+- **Few flat colors.** At most eight, each in the palette, no opacity, no blends. A **border or a pattern tile has at most three**: one main color, a second, and an accent (an author recolors them as primary, secondary and accent), so choose the three that carry the design.
 - **The right layout** for the kind, which the checks read: frames, borders and tiles are also fitted
   and joined the way an app will.
 

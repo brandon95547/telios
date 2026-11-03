@@ -68,10 +68,15 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
         {traced && (
           <label className="field">
             <div className="label">Made for</div>
-            <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>
+            <select value={options.madeFor} onChange={(e) => {
+              const v = e.target.value as RestyleOptions['madeFor'];
+              set('madeFor', v);
+              // a border's own background is taken out unless Keep original is chosen again
+              if (v === 'border' && options.background === 'original') set('background', 'transparent');
+            }}>
               {TRACE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI.' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI.' : ''} A picture that does not repeat is refused.</div>
+            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, named Primary, Secondary and Accent by the area each covers.' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, named Primary, Secondary and Accent by the area each covers, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</div>
           </label>
         )}
         {byModel && (

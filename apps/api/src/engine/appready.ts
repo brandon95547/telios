@@ -6,7 +6,7 @@
 // object only has to be whole, clean and flat); nothing a frame needs is asked of an object.
 
 import sharp from 'sharp';
-import { axisPieces, borderCells, classOf, composeCells, EASING, frameCells, MAX_SVG_BYTES, namespaceSvg, pageInArtUnits, reportOk, sliceOf, TRIMS } from '@telios/shared';
+import { axisPieces, borderCells, classOf, colorsFor, composeCells, EASING, frameCells, MAX_SVG_BYTES, namespaceSvg, pageInArtUnits, reportOk, sliceOf, TRIMS } from '@telios/shared';
 import type { AppCheck, AppReport, Layout, PaletteColor, PieceClass, Reading } from '@telios/shared';
 import { render, sizeOf } from './render.ts';
 
@@ -313,9 +313,10 @@ async function thinCheck(svg: string): Promise<AppCheck> {
     : { id: 'thin', label, ok: true, detail: `${pct(share)} of the ink is that thin (at most ${pct(THIN_LIMIT)})` };
 }
 
-function paletteCheck(palette: PaletteColor[], off: { share: number; colors: string[] }): AppCheck {
+function paletteCheck(palette: PaletteColor[], off: { share: number; colors: string[] }, piece: PieceClass): AppCheck {
   const label = 'Few flat colors';
-  if (palette.length > 8) return { id: 'palette', label, ok: false, detail: `The palette has ${palette.length} colors; an app takes at most 8 flat colors (each is a layer).` };
+  const most = colorsFor(piece);
+  if (palette.length > most) return { id: 'palette', label, ok: false, detail: `The palette has ${palette.length} colors; ${piece === 'border' || piece === 'tile' ? `a ${piece === 'tile' ? 'pattern tile' : 'border'} takes at most ${most} (a primary, a secondary and an accent, which an author can recolor)` : `an app takes at most ${most} flat colors`} (each is a layer).` };
   if (off.share > 0.004) return { id: 'palette', label, ok: false, detail: `${(off.share * 100).toFixed(1)}% of the flat areas are colors outside the palette${off.colors.length ? ` (${off.colors.join(', ')})` : ''}: remove opacity, masks or blends, or add the color to the palette.` };
   return { id: 'palette', label, ok: true, detail: `${palette.length} flat color${palette.length === 1 ? '' : 's'}` };
 }
@@ -343,7 +344,7 @@ export async function appReady(svg: string, layout: Layout | null, palette: Pale
     if (seam) checks.push(seam);
   }
   if (piece === 'frame') checks.push(await windowCheck(svg));
-  checks.push(await thinCheck(svg), paletteCheck(palette, off));
+  checks.push(await thinCheck(svg), paletteCheck(palette, off, piece));
   if (piece !== 'tile') checks.push(await backgroundCheck(svg));
   return { piece, ok: reportOk(checks), checks };
 }

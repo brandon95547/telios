@@ -8,7 +8,10 @@
 //               that does not repeat is refused, in words. The tile's fitting data is written (layout.json), the
 //               preview is the tile repeated 2 × 2 and a fit sheet shows it 3 × 3;
 //   a border    the same for a strip (`tile --border`): turned to run level, straightened, one exact unit cut along
-//               its length, wrapped at its ends only. Its fitting data says the whole unit is the repeat; the
+//               its length, wrapped at its ends only; the color behind its design is taken out unless Background is Keep original.
+//
+// A pattern tile and a border have at most three colors (FEW_COLORS), named Primary, Secondary and Accent by the area each covers,
+// so an app can offer them as three colors to recolor. An object keeps up to TRACE_MAX_COLORS and is named by what the color looks like. Its fitting data says the whole unit is the repeat; the
 //               preview and the fit sheet lay it 3 and 4 times along.
 //
 // It runs on the CPU, a few at a time.
@@ -17,7 +20,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp, { type OverlayOptions } from 'sharp';
-import { BACKGROUND_HEX, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, TRACE_MERGE, kindFor } from '@telios/shared';
+import { BACKGROUND_HEX, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, TRACE_MERGE, kindFor, lightnessOf } from '@telios/shared';
 import type { RestyleResult, TraceTile } from '@telios/shared';
 import { python } from '../python.ts';
 import { screenCopies } from './job.ts';
@@ -34,10 +37,20 @@ interface Traced { layers: Layer[] }
 interface Tiled extends Traced {
   size: [number, number]; cell: [number, number]; tilt: number; lattice: 'grid' | 'half-drop' | 'strip'; perCell: number;
   repeatStrength: [number, number]; copies: number; seam: number;
+  /** A border's background that was taken out (its color and the share of the unit it covered), or null. */
+  ground?: { color: string; share: number } | null;
 }
 
 /** A worker's error in plain words: its Python type name is not for the person. */
 const plain = (e: unknown) => (e as Error).message.replace(/^\w*Error:\s*/, '');
+
+/** What a tile is laid on for its preview: the color that fills most of an opaque tile; for a border whose background was taken out, the ground picked (white, black or green) or a neutral that the design shows against. */
+function previewGround(layers: Layer[], cleared: string | null): string {
+  if (cleared === null) return [...layers].sort((a, b) => b.share - a.share)[0].color;
+  if (cleared in BACKGROUND_HEX && cleared !== 'transparent' && cleared !== 'original') return BACKGROUND_HEX[cleared as keyof typeof BACKGROUND_HEX];
+  const mean = layers.reduce((n, l) => n + lightnessOf(l.color), 0) / Math.max(1, layers.length);
+  return mean < 0.5 ? '#f3f1ec' : '#2b2b2b';
+}
 
 /** The tile (or a border's unit) rendered at its own size (px), then laid `across` × `down` on `ground`, at most `side` px on its longer side. */
 async function repeated(svg: Buffer, across: number, down: number, ground: string, side: number) {
@@ -67,7 +80,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     try {
       // an object keeps the picture's own ground only where that was asked for
       traced = tiled
-        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : [])], 10 * 60_000)
+        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border', ...(o.background === 'original' ? ['--keep-ground'] : [])] : [])], 10 * 60_000)
         : await python<Traced>(['trace', source, scratch, '--mode', 'full', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
     } catch (e) {
       throw new Error(plain(e));
@@ -94,9 +107,10 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     const warnings: string[] = [];
     if (t) {
       // the tile is opaque, on the color that fills most of it, so the preview shows how it repeats and not what is behind
-      const ground = [...traced.layers].sort((a, b) => b.share - a.share)[0].color;
+      const ground = previewGround(traced.layers, t.ground ? o.background : null);
       png = strip ? await repeated(svg, 3, 1, ground, PREVIEW_SIDE) : await repeated(svg, 2, 2, ground, PREVIEW_SIDE);
       sheet = strip ? await repeated(svg, 4, 1, ground, SHEET_SIDE) : await repeated(svg, 3, 3, ground, SHEET_SIDE);
+      if (t.ground) warnings.push(`The border's background (${t.ground.color}, ${Math.round(t.ground.share * 100)}% of the unit) was taken out, leaving the design on a clear ground. If it needs it, choose Background → Keep original.`);
       if (t.seam > TILE_SEAM_MAX) warnings.push(`The tile's edges do not meet cleanly (the colors change ${t.seam}× as much across them as inside): the picture may not repeat exactly.`);
       if (Math.min(...t.repeatStrength) < TILE_STRENGTH_MIN) warnings.push('The repeat is loose: copies of the pattern in the picture differ a good deal, so the tile is an average of them.');
     } else {

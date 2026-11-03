@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from telios_worker.tile import border, centered, centered_x, lay_tile, seam_of, tile, offset_paths, smooth_labels, tilt_of, gray_of, axis_curves, period_of_curve, strip_tilt
+from telios_worker.tile import border, centered, centered_x, lay_tile, seam_of, tile, offset_paths, smooth_labels, tilt_of, gray_of, axis_curves, period_of_curve, strip_tilt, at_most, role_names
 
 
 def pattern(cw, ch, w, h, seed=3):
@@ -87,16 +87,75 @@ def strip(cw, h, w, seed=5):
     return np.clip(img + rng.normal(0, 4, img.shape), 0, 255).astype(np.uint8)
 
 
-def run_border(img):
+def run_border(img, keep_ground=False):
     with tempfile.TemporaryDirectory() as d:
         src = os.path.join(d, 'scan.png')
         Image.fromarray(img).save(src)
         out = os.path.join(d, 'out')
         os.makedirs(out)
-        info = border(src, out, 8)
+        info = border(src, out, 8, keep_ground=keep_ground)
         with open(os.path.join(out, 'layered.svg')) as f:
             info['svg'] = f.read()
         return info
+
+
+def on_ground(cw, h, w, seed=7):
+    """A border of four colors drawn straight on a cream ground that fills the strip round them."""
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    img = np.empty((h, w, 3), np.float32)
+    img[:] = (238, 232, 214)
+    u = np.mod(xx, cw)
+    img[((u - cw * 0.5) ** 2 + (yy - h / 2) ** 2) < (h * 0.26) ** 2] = (150, 40, 35)
+    img[(np.abs(u - cw * 0.2) < 4) & (np.abs(yy - h * 0.5) < h * 0.3)] = (45, 45, 50)
+    img[((u - cw * 0.8) ** 2 + (yy - h * 0.5) ** 2) < (h * 0.09) ** 2] = (190, 150, 50)
+    img[((u - cw * 0.5) ** 2 + (yy - h / 2) ** 2) < (h * 0.12) ** 2] = (70, 90, 150)
+    return np.clip(img + rng.normal(0, 3, img.shape), 0, 255).astype(np.uint8)
+
+
+def layers_of(info):
+    return info['layers']
+
+
+class Colors(unittest.TestCase):
+    def test_a_palette_is_made_to_at_most_three_by_joining_its_nearest(self):
+        pal = [(20, 20, 20), (30, 28, 26), (150, 40, 35), (190, 150, 50), (200, 160, 60)]
+        labs = np.array([[0, 0, 0]], float)
+        from telios_worker.common import lab
+        im = np.array([pal], np.uint8).astype(float)
+        out = at_most(pal, lab(np.repeat(im, 40, axis=0)), 3)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(len(at_most(pal[:2], lab(im), 3)), 2)
+
+    def test_the_colors_are_named_by_the_area_they_cover(self):
+        self.assertEqual(role_names([0.5]), ['Color'])
+        self.assertEqual(role_names([0.1, 0.6]), ['Secondary', 'Primary'])
+        self.assertEqual(role_names([0.2, 0.7, 0.1]), ['Secondary', 'Primary', 'Accent'])
+
+    def test_a_pattern_tile_has_at_most_three_colors_named_primary_secondary_accent(self):
+        info = run(with_margin(pattern(60, 80, 600, 560)))
+        names = [l['name'] for l in layers_of(info)]
+        self.assertLessEqual(len(names), 3)
+        self.assertEqual(sorted(names), sorted(role_names([1.0 - i * 0.1 for i in range(len(names))])))
+
+    def test_a_border_has_at_most_three_colors_and_its_background_taken_out(self):
+        info = run_border(with_margin(on_ground(100, 120, 640)))
+        names = [l['name'] for l in layers_of(info)]
+        self.assertLessEqual(len(names), 3)
+        self.assertTrue(set(names) <= {'Primary', 'Secondary', 'Accent'})
+        self.assertIsNotNone(info['ground'])
+        self.assertEqual(info['ground']['color'][0:1], '#')
+        self.assertNotIn(info['ground']['color'], [l['color'] for l in layers_of(info)])
+        self.assertGreater(info['ground']['share'], 0.4)
+
+    def test_a_border_keeps_its_background_when_asked(self):
+        info = run_border(with_margin(on_ground(100, 120, 640)), keep_ground=True)
+        self.assertIsNone(info['ground'])
+        self.assertLessEqual(len(layers_of(info)), 3)
+
+    def test_a_rule_along_the_edges_is_the_borders_own_and_not_its_background(self):
+        info = run_border(with_margin(strip(100, 120, 640)))
+        self.assertIsNone(info['ground'])
 
 
 class Border(unittest.TestCase):

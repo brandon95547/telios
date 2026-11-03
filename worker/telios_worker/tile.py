@@ -32,6 +32,11 @@ TILE_MIN = 1600          # a tile is traced at least this big on its longer side
 TILE_MAX = 2600
 BLEND = 5.0             # a color this near (Lab) the line between two others, between them, is the blend where they meet, not a color
 TWINS = 9.0             # two colors this near (Lab) are one
+MOST = 3                # a pattern tile or a border has at most this many colors
+ROLES = ('Primary', 'Secondary', 'Accent')
+EDGE = 0.04             # a border's ground is the color along its top and bottom edges, this share of its height each
+GROUND_SHARE = 0.6      # …when it holds this much of them
+MIDDLE_SHARE = 0.2      # …and this much of the strip's middle half, between its motifs
 SMOOTH = 1.1             # how far (in the picture's own pixels) the colors' outlines are smoothed
 
 
@@ -282,6 +287,51 @@ def half_alike(gray, cw, ch):
     return ncc(gray[dy:, dx:], gray[: gray.shape[0] - dy, : gray.shape[1] - dx])
 
 
+def at_most(pal, labs, n):
+    """The palette with its nearest two colors (Lab, weighted by the pixels each holds) made one until `n` or fewer are left, so a
+    design of five tones is three and nothing but near neighbors is lost. Dark to light."""
+    pal = [np.array(c, float) for c in pal]
+    if len(pal) <= n:
+        return np.array(pal)
+    pts = labs.reshape(-1, 3)
+    pts = pts[:: max(1, len(pts) // 60000)]
+    counts = np.bincount(vq(pts, lab(np.array(pal)))[0], minlength=len(pal)).astype(float)
+    counts = list(counts)
+    while len(pal) > n:
+        L = [lab(c) for c in pal]
+        best = min(((float(np.linalg.norm(L[i] - L[j])), i, j) for i in range(len(pal)) for j in range(i + 1, len(pal))))
+        _, i, j = best
+        pal[i] = (pal[i] * counts[i] + pal[j] * counts[j]) / max(1.0, counts[i] + counts[j])
+        counts[i] += counts[j]
+        del pal[j], counts[j]
+    out = np.array(pal)
+    return out[np.argsort(lab(out)[:, 0])]
+
+
+def role_names(shares):
+    """One name for each color by the area it covers: the most is Primary, the next Secondary, the least Accent; a lone color is just Color."""
+    if len(shares) == 1:
+        return ['Color']
+    names = [None] * len(shares)
+    for role, i in zip(ROLES, sorted(range(len(shares)), key=lambda k: -shares[k])):
+        names[i] = role
+    return names
+
+
+def ground_of(band, k):
+    """The index of the color that is a border's background: the one along its top and bottom edges that also fills the gaps in its
+    middle. A rule along the edges (a band that is the border's own) is not in the middle, so it is kept. None when there is none."""
+    rows = max(2, int(round(EDGE * band.shape[0])))
+    edge = np.concatenate([band[:rows].ravel(), band[-rows:].ravel()])
+    counts = np.bincount(edge, minlength=k)
+    best = int(counts.argmax())
+    if counts[best] < GROUND_SHARE * edge.size:
+        return None
+    h = band.shape[0]
+    middle = band[int(0.25 * h):int(0.75 * h)]
+    return best if (middle == best).mean() >= MIDDLE_SHARE else None
+
+
 def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND):
     im = load_rgba(source)
     rgba = np.asarray(im)
@@ -312,12 +362,12 @@ def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND)
     soft = tile_rgb
     labs = lab(soft)
     pal, _ = palette_for(soft, labs, np.ones((H, W), bool), None, {'kind': 'none'}, False, max_colors, 1)
-    pal = clean_palette(pal, labs, blend, twins)
+    pal = at_most(clean_palette(pal, labs, blend, twins), labs, MOST)
     band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     band = smooth_labels(band, len(pal), SMOOTH * S)
     seam = seam_of(band)
     colors = [hex_color(c) for c in pal]
-    names = [color_name(tuple(c)) for c in pal]
+    names = role_names([float((band == i).sum()) for i in range(len(pal))])
     # traced with its own edges wrapped round it, so what leaves one edge is what enters the opposite
     pad = max(8, int(0.06 * min(W, H)))
     layers = build_layers(np.pad(band, pad, mode='wrap'), np.ones((H + 2 * pad, W + 2 * pad), bool), colors, names, speckle=int(4 * max(1, S)))
@@ -385,7 +435,7 @@ def seam_x(band):
     return float(round((across + 0.01) / (inner + 0.01), 3))
 
 
-def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND):
+def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND, keep_ground=False):
     """A border (a band or strip) made into one exact unit that repeats along its length, traced to flat color layers. The strip is turned
     to run level (a tall one a quarter turn), levelled by what it leans, its repeat found along its length to a fraction of a pixel, every
     copy of it laid on one unit, and the unit traced with its left and right edges wrapped round it."""
@@ -420,16 +470,32 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
     unit, sx, symmetry = centered_x(unit)
     labs = lab(unit)
     pal, _ = palette_for(unit, labs, np.ones((H, W), bool), None, {'kind': 'none'}, False, max_colors, 1)
-    pal = clean_palette(pal, labs)
+    # a ground takes a place among the colors, so one more is kept until it is found and taken out: the border has at most three of its own
+    pal = at_most(clean_palette(pal, labs), labs, MOST if keep_ground else MOST + 1)
     band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     # smoothed along its length with its ends wrapped, but not across (its top and bottom are the strip's own edges)
     votes = np.stack([ndimage.gaussian_filter((band == i).astype(np.float32), SMOOTH * S, mode=('nearest', 'wrap')) for i in range(len(pal))])
     band = votes.argmax(0)
+    ground = None if keep_ground else ground_of(band, len(pal))
+    removed = None
+    if ground is not None:
+        removed = {'color': hex_color(pal[ground]), 'share': round(float((band == ground).mean()), 3)}
+        keep = [i for i in range(len(pal)) if i != ground]
+        remap = np.zeros(len(pal), int)
+        remap[keep] = np.arange(len(keep))
+        shape = band != ground
+        band = remap[band]
+        pal = pal[keep]
+    else:
+        shape = np.ones((H, W), bool)
+        if len(pal) > MOST:
+            pal = at_most(pal, labs, MOST)
+            band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
     seam = seam_x(band)
     colors = [hex_color(c) for c in pal]
-    names = [color_name(tuple(c)) for c in pal]
+    names = role_names([float(((band == i) & shape).sum()) for i in range(len(pal))])
     pad = max(8, int(0.12 * W))
-    layers = build_layers(np.pad(band, ((0, 0), (pad, pad)), mode='wrap'), np.ones((H, W + 2 * pad), bool), colors, names, speckle=int(4 * max(1, S)))
+    layers = build_layers(np.pad(band, ((0, 0), (pad, pad)), mode='wrap'), np.pad(shape, ((0, 0), (pad, pad)), mode='wrap'), colors, names, speckle=int(4 * max(1, S)))
     svg = tile_svg(layers, W, H, pad, title, pad_y=0)
     with open(os.path.join(outdir, 'layered.svg'), 'w') as f:
         f.write(svg)
@@ -437,5 +503,5 @@ def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEN
     return {
         'size': [W, H], 'cell': [round(cw, 2), float(H0)], 'tilt': round(float(tilt), 3), 'lattice': 'strip', 'perCell': 1,
         'repeatStrength': [round(rx, 3), round(rx, 3)], 'copies': copies, 'symmetry': round(symmetry, 3), 'slid': [sx, 0], 'seam': seam,
-        'turned': bool(quarter), 'layers': summary(layers), 'bytes': len(svg),
+        'turned': bool(quarter), 'layers': summary(layers), 'bytes': len(svg), 'ground': removed,
     }

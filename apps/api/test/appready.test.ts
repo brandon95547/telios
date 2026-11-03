@@ -8,7 +8,7 @@ process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-appready
 
 const { appReady, failures, fitSheet, overflow, sizeCheck, thinShare } = await import('../src/engine/appready.ts');
 const { runProgram } = await import('../src/sandbox/run.ts');
-const { classOf, kindFor, TARGETS, TRIMS } = await import('@telios/shared');
+const { classOf, colorsFor, kindFor, roleNames, TARGETS, TRIMS } = await import('@telios/shared');
 
 const EXAMPLES = path.join(import.meta.dirname, '../src/engine/examples');
 const FRAME = { kind: 'frame', repeats: { axis: 'edges' }, symmetry: 'mirror-x' } as any;
@@ -150,4 +150,16 @@ test('the file size limit is the heaviest frames an app already carries: a 3.5 M
   const big = sizeCheck(6 * 1048576);
   assert.equal(big.ok, false);
   assert.match(big.detail, /6\.0 MB \(at most 4 MB\)/);
+});
+
+test('a border or a pattern tile has at most three colors, named by the area each covers; any other piece eight', async () => {
+  assert.deepEqual(['frame', 'border', 'corner', 'tile', 'object'].map((p) => colorsFor(p as never)), [8, 3, 8, 3, 8]);
+  assert.deepEqual(roleNames([0.5]), ['Color']);
+  assert.deepEqual(roleNames([0.1, 0.6]), ['Secondary', 'Primary']);
+  assert.deepEqual(roleNames([0.2, 0.7, 0.1]), ['Secondary', 'Primary', 'Accent']);
+  const four = [{ hex: '#c0392b', name: 'Red' }, { hex: '#1d1a17', name: 'Ink' }, { hex: '#2e7d32', name: 'Green' }, { hex: '#c9a227', name: 'Gold' }];
+  const strip = { ...OBJECT, kind: 'border' as const };
+  assert.equal(status(await appReady(FLOWER, { form: 'whole', size: [900, 1400] }, four, strip)).palette, false);
+  assert.equal(status(await appReady(FLOWER, { form: 'whole', size: [900, 1400] }, four.slice(0, 3), strip)).palette, true);
+  assert.equal(status(await appReady(FLOWER, { form: 'whole', size: [900, 1400] }, four, OBJECT)).palette, true, 'an object may have more');
 });
