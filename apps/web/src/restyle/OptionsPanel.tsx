@@ -71,7 +71,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>
               {TRACE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace has no fitting data, so it cannot be a frame, a border or a corner. Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat found and one seamless tile cut from it and traced, with no AI. A picture that does not repeat is refused.' : ''}</div>
+            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI.' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI.' : ''} A picture that does not repeat is refused.</div>
           </label>
         )}
         {byModel && (

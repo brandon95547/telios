@@ -88,6 +88,7 @@ def main(argv=None):
     ti.add_argument('--twins', type=float, default=9.0, help='Lab distance under which two colors are one')
     ti.add_argument('--blend', type=float, default=5.0, help='Lab distance from the line between two colors under which a color is their blend')
     ti.add_argument('--title', default='Telios')
+    ti.add_argument('--border', action='store_true', help='a strip that repeats along its length, not a pattern that repeats both ways')
     r = sub.add_parser('rebuild')
     r.add_argument('source')
     r.add_argument('outdir')
@@ -148,9 +149,9 @@ def main(argv=None):
             pal = json.loads(args.palette) if args.palette else None
             out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge))
         elif args.cmd == 'tile':
-            from .tile import tile
+            from .tile import border, tile
             os.makedirs(args.outdir, exist_ok=True)
-            out(tile(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend))
+            out((border if args.border else tile)(args.source, args.outdir, args.max_colors, args.twins, args.title, args.blend))
         elif args.cmd == 'rebuild':
             from .rebuild import rebuild
             os.makedirs(args.outdir, exist_ok=True)

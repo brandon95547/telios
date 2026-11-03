@@ -30,10 +30,12 @@ test('a trace is one version, with no theme, and may keep the picture’s own gr
   assert.equal(cleanOptions({ type: 'vector', background: 'original' }).background, 'transparent', 'a flat SVG has no ground to keep');
 });
 
-test('a trace is made for an object (the default) or a pattern tile: it has no fitting data for a frame, a border or a corner', () => {
+test('a trace is made for an object (the default), a pattern tile or a border: it has no fitting data for a frame or a corner', () => {
   assert.equal(cleanOptions({ type: 'trace' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'pattern' }).madeFor, 'pattern');
+  assert.equal(cleanOptions({ type: 'trace', madeFor: 'border' }).madeFor, 'border');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'frame' }).madeFor, 'object');
+  assert.equal(cleanOptions({ type: 'trace', madeFor: 'corner' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'illustration', madeFor: 'pattern' }).madeFor, 'auto');
 });
 
@@ -165,6 +167,70 @@ test('a pattern tile’s app package says it is a tile, with its layout and fit 
   assert.equal(manifest.appReady, null, 'a trace is not measured for an app');
   assert.ok(files.some((f) => f.name.endsWith('.svg')) && files.some((f) => f.name.endsWith('.fitsheet.png')));
   assert.ok(!hasPackage({ files: { png: 'x', svg: 'x', thumb: '', view: '', original: '' } }), 'clip art is no package');
+});
+
+/** A border scan: a motif that repeats every 64 px along a strip 96 high and 448 long, on a pale margin, made vertical (as a book's plate gives it). */
+async function makeBorder(id: string, over: Record<string, unknown> = {}) {
+  const dir = resultDir(id);
+  fs.mkdirSync(dir, { recursive: true });
+  const W = 448, H = 96, M = 30, cw = 64;
+  const raw = Buffer.alloc((W + 2 * M) * (H + 2 * M) * 3, 206);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = x % cw;
+    let c = [150, 120, 85];
+    if (y < H * 0.12 || y > H * 0.88) c = [60, 30, 25];
+    else if ((u - cw * 0.5) ** 2 + (y - H / 2) ** 2 < (H * 0.28) ** 2) c = [170, 50, 40];
+    else if (Math.abs(u - cw * 0.2) < 3 && Math.abs(y - H * 0.4) < H * 0.2) c = [40, 40, 40];
+    const i = ((y + M) * (W + 2 * M) + x + M) * 3;
+    raw[i] = c[0]; raw[i + 1] = c[1]; raw[i + 2] = c[2];
+  }
+  fs.writeFileSync(path.join(dir, 'source.png'), await sharp(raw, { raw: { width: W + 2 * M, height: H + 2 * M, channels: 3 } }).rotate(90).png().toBuffer());
+  await sharp({ create: { width: 40, height: 30, channels: 3, background: '#fff' } }).webp().toFile(path.join(dir, 'original.webp'));
+  saveResult({
+    id, batchId: 'b1', inputId: 'i1', inputName: 'Palmette border', folder: '', variation: 1, status: 'queued', createdAt: new Date().toISOString(),
+    options: cleanOptions({ type: 'trace', madeFor: 'border', background: 'transparent', ...over }),
+  });
+}
+
+test('a border is cut to one exact unit along its length, turned to run level, with a border’s fitting data', async () => {
+  await makeBorder('xborder1');
+  await drawTrace('xborder1', new AbortController().signal);
+  const r = getResult('xborder1')!;
+  assert.equal(r.status, 'done', r.error ?? 'no error');
+  const t = r.traced!.tile!;
+  assert.equal(t.lattice, 'strip');
+  assert.ok(Math.abs(t.cell[0] - 64) / 64 < 0.02, `unit ${t.cell}`);
+  assert.ok(t.seam < 1.5, `seam ${t.seam}`);
+  const layout = JSON.parse(fs.readFileSync(path.join(resultDir('xborder1'), 'layout.json'), 'utf8'));
+  assert.equal(layout.form, 'border');
+  assert.equal(layout.fit, 'tile');
+  assert.deepEqual(layout.repeat, { x: [0, layout.size[0]] }, 'the whole unit is the repeat');
+  assert.ok(layout.size[0] < layout.size[1] * 4 && layout.size[1] > 80, `size ${layout.size}`);
+  assert.ok(r.files?.fitsheet && r.files.layout);
+  const rows = Object.fromEntries(settingRows(r).map((x) => [x.label, x.value]));
+  assert.match(rows['Repeat found'], /along the border/);
+});
+
+test('a border’s app package says it is a border, with its layout', async () => {
+  await makeBorder('xborder2');
+  await drawTrace('xborder2', new AbortController().signal);
+  const r = getResult('xborder2')!;
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-pkg-'));
+  const files = await writePackage(r, 'palmette-border', work);
+  const manifest = JSON.parse(fs.readFileSync(files.find((f) => f.name.endsWith('.json'))!.src, 'utf8'));
+  assert.equal(manifest.piece, 'border');
+  assert.equal(manifest.kind, 'border');
+  assert.equal(manifest.layout.form, 'border');
+  assert.deepEqual(manifest.layout.repeat, { x: [0, manifest.size[0]] });
+  assert.ok(files.some((f) => f.name.endsWith('.fitsheet.png')));
+});
+
+test('a border chosen as a pattern is told it is a border, in plain words', async () => {
+  await makeBorder('xborder3', { madeFor: 'pattern' });
+  await drawTrace('xborder3', new AbortController().signal);
+  const r = getResult('xborder3')!;
+  assert.equal(r.status, 'failed');
+  assert.match(r.error ?? '', /it is a border, not a pattern tile\. Choose Made for → Border/);
 });
 
 test('a picture that does not repeat is refused as a pattern, in plain words', async () => {

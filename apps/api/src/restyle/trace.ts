@@ -6,7 +6,10 @@
 //   a pattern   one seamless tile (the worker's `tile`): the scan straightened, its repeat found, every copy of
 //               it averaged into one tile and traced with its edges wrapped, so it repeats as it is. A picture
 //               that does not repeat is refused, in words. The tile's fitting data is written (layout.json), the
-//               preview is the tile repeated 2 × 2 and a fit sheet shows it 3 × 3.
+//               preview is the tile repeated 2 × 2 and a fit sheet shows it 3 × 3;
+//   a border    the same for a strip (`tile --border`): turned to run level, straightened, one exact unit cut along
+//               its length, wrapped at its ends only. Its fitting data says the whole unit is the repeat; the
+//               preview and the fit sheet lay it 3 and 4 times along.
 //
 // It runs on the CPU, a few at a time.
 
@@ -29,14 +32,14 @@ const SHEET_SIDE = 1600;
 interface Layer { id: string; color: string; name: string; share: number }
 interface Traced { layers: Layer[] }
 interface Tiled extends Traced {
-  size: [number, number]; cell: [number, number]; tilt: number; lattice: 'grid' | 'half-drop'; perCell: number;
+  size: [number, number]; cell: [number, number]; tilt: number; lattice: 'grid' | 'half-drop' | 'strip'; perCell: number;
   repeatStrength: [number, number]; copies: number; seam: number;
 }
 
 /** A worker's error in plain words: its Python type name is not for the person. */
 const plain = (e: unknown) => (e as Error).message.replace(/^\w*Error:\s*/, '');
 
-/** The tile rendered at its own size (px), then laid `across` × `down` on `ground`, at most `side` px on its longer side. */
+/** The tile (or a border's unit) rendered at its own size (px), then laid `across` × `down` on `ground`, at most `side` px on its longer side. */
 async function repeated(svg: Buffer, across: number, down: number, ground: string, side: number) {
   const one = await sharp(svg, { density: 72 }).flatten({ background: ground }).png().toBuffer();
   const m = await sharp(one).metadata();
@@ -51,7 +54,8 @@ export async function drawTrace(id: string, signal: AbortSignal) {
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
-  const tiled = o.madeFor === 'pattern';
+  const strip = o.madeFor === 'border';
+  const tiled = o.madeFor === 'pattern' || strip;
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));
   try {
     const stage = stagesOf(id, tiled
@@ -63,7 +67,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     try {
       // an object keeps the picture's own ground only where that was asked for
       traced = tiled
-        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS)], 10 * 60_000)
+        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : [])], 10 * 60_000)
         : await python<Traced>(['trace', source, scratch, '--mode', 'full', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
     } catch (e) {
       throw new Error(plain(e));
@@ -78,11 +82,11 @@ export async function drawTrace(id: string, signal: AbortSignal) {
       kind, rendering: 'flat', colorMode: 'full',
       palette: traced.layers.map((l) => ({ hex: l.color, name: l.name })), layers: traced.layers,
       summary: t
-        ? `One seamless ${t.size[0]} × ${t.size[1]} tile cut from the picture's repeat (${t.lattice}), traced into ${traced.layers.length} flat colors; nothing was redrawn.`
+        ? `One seamless ${t.size[0]} × ${t.size[1]} ${strip ? 'unit cut from the border\'s repeat along its length' : `tile cut from the picture's repeat (${t.lattice})`}, traced into ${traced.layers.length} flat colors; nothing was redrawn.`
         : `Traced from the picture into ${traced.layers.length} flat colors; nothing was redrawn.`,
     }, null, 1));
-    // a tile has its fitting data: the size it repeats at and how its rows sit
-    if (t) fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify({ form: 'tile', size: t.size, lattice: t.lattice }));
+    // a tile has its fitting data: the size it repeats at and how its rows sit; a border's whole unit is its repeat
+    if (t) fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify(strip ? { form: 'border', size: t.size, fit: 'tile', repeat: { x: [0, t.size[0]] } } : { form: 'tile', size: t.size, lattice: t.lattice }));
 
     stage('Finishing');
     let png: Buffer;
@@ -91,8 +95,8 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     if (t) {
       // the tile is opaque, on the color that fills most of it, so the preview shows how it repeats and not what is behind
       const ground = [...traced.layers].sort((a, b) => b.share - a.share)[0].color;
-      png = await repeated(svg, 2, 2, ground, PREVIEW_SIDE);
-      sheet = await repeated(svg, 3, 3, ground, SHEET_SIDE);
+      png = strip ? await repeated(svg, 3, 1, ground, PREVIEW_SIDE) : await repeated(svg, 2, 2, ground, PREVIEW_SIDE);
+      sheet = strip ? await repeated(svg, 4, 1, ground, SHEET_SIDE) : await repeated(svg, 3, 3, ground, SHEET_SIDE);
       if (t.seam > TILE_SEAM_MAX) warnings.push(`The tile's edges do not meet cleanly (the colors change ${t.seam}× as much across them as inside): the picture may not repeat exactly.`);
       if (Math.min(...t.repeatStrength) < TILE_STRENGTH_MIN) warnings.push('The repeat is loose: copies of the pattern in the picture differ a good deal, so the tile is an average of them.');
     } else {

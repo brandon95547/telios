@@ -49,9 +49,9 @@ export const drawnByModel = (type: OutputType) => type === 'vector';
 /** Whether the picture is traced as it is (the worker's trace), not redrawn by ComfyUI or a model. */
 export const tracedOnly = (type: OutputType) => type === 'trace';
 
-/** What a trace can be made for: it has the picture's shapes but no fitting data, so a frame, a border or a corner
- * (which an app fits to a page by it) cannot be. An object is the default. */
-export const TRACE_TARGETS = TARGETS.filter((t) => t.value === 'object' || t.value === 'pattern');
+/** What a trace can be made for: an object (the default), a pattern tile (one exact repeat, across and down) or a border (one exact repeat
+ * along its length). Not a frame or a corner: an app fits those to a page by data a trace does not have. */
+export const TRACE_TARGETS = TARGETS.filter((t) => t.value === 'object' || t.value === 'pattern' || t.value === 'border');
 
 /** Whether a result can be taken as an app package (the SVG with its manifest): a flat SVG, or a trace. */
 export const hasPackage = (r: Pick<RestyleResult, 'drawing' | 'traced' | 'files'>) => !!(r.files?.svg && (r.drawing || r.traced));
@@ -264,7 +264,7 @@ export interface RestyleResult {
 export interface TraceTile {
   /** The repeat found, in the scan's own pixels, and how its rows sit (half-drop: each row half a cell along, two motifs a cell). */
   cell: [number, number];
-  lattice: 'grid' | 'half-drop';
+  lattice: 'grid' | 'half-drop' | 'strip';
   /** The degrees the scan was turned to level it. */
   tilt: number;
   /** How many copies of the repeat in the scan were averaged into the tile. */
@@ -380,9 +380,11 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     const t = r.traced?.tile;
     if (t) {
-      rows.push({ label: 'Repeat found', value: `one tile of ${t.cell[0]} × ${t.cell[1]} px of the picture, ${t.lattice === 'half-drop' ? 'staggered (half-drop: each row half a tile along)' : 'straight (a grid)'}, averaged from ${t.copies} copies of it` });
+      rows.push({ label: 'Repeat found', value: t.lattice === 'strip'
+        ? `one unit ${t.cell[0]} px long along the border (${t.cell[1]} px across), averaged from ${t.copies} copies of it`
+        : `one tile of ${t.cell[0]} × ${t.cell[1]} px of the picture, ${t.lattice === 'half-drop' ? 'staggered (half-drop: each row half a tile along)' : 'straight (a grid)'}, averaged from ${t.copies} copies of it` });
       rows.push({ label: 'Straightened', value: Math.abs(t.tilt) < 0.1 ? 'it was level' : `turned ${Math.abs(t.tilt)}° ${t.tilt > 0 ? 'back' : 'the other way'} to level it` });
-      rows.push({ label: 'Seam', value: t.seam <= TILE_SEAM_MAX ? 'none: the tile’s edges meet' : `visible (the colors change ${t.seam}× as much across the edge as inside it)` });
+      rows.push({ label: 'Seam', value: t.seam <= TILE_SEAM_MAX ? 'none: the unit’s edges meet' : `visible (the colors change ${t.seam}× as much across the edge as inside it)` });
     }
     rows.push({ label: 'Traced as', value: `the picture's own shapes in ${r.traced ? `${r.traced.colors.length} flat colors` : 'a few flat colors'}, one SVG layer each; nothing is redrawn` });
     rows.push({ label: 'Background', value: o.background === 'original' ? 'kept as in the original, a scan\'s margin included' : `${BACKGROUND_LABEL[o.background]}; a scan's margin is cleared` });

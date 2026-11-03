@@ -45,7 +45,8 @@ def design_box(rgba):
     ys, xs = np.nonzero(shape)
     if not len(xs):
         return 0, 0, rgba.shape[1], rgba.shape[0]
-    pad = int(0.01 * max(rgba.shape[:2]))
+    # a hair in from the edge of the design, by its shorter side: by its longer, a long thin border would lose a fifth of its width
+    pad = max(1, int(0.01 * min(rgba.shape[:2])))
     return int(xs.min()) + pad, int(ys.min()) + pad, int(xs.max()) + 1 - pad, int(ys.max()) + 1 - pad
 
 
@@ -81,6 +82,9 @@ def tilt_of(gray):
     k = min(1.0, TILT_SIDE / max(gray.shape))
     small = ndimage.zoom(gray, k, order=1) if k < 1 else gray
     cut = int(math.ceil(math.sin(math.radians(TILT_MAX)) * max(small.shape))) + 2
+    if cut * 2 + 16 >= min(small.shape):
+        # a long thin strip would be cut to nothing by turning it: it is not a pattern to level both ways (a border is levelled along its length)
+        return 0.0, 0.0, {}
 
     def score(deg):
         r = ndimage.rotate(small, -deg, reshape=False, order=1, mode='reflect')
@@ -176,8 +180,10 @@ def centered(tile):
     itself turned half way round there (0–1): the slide is only taken where that is strong."""
     g = gray_of(tile)
     g = g - g.mean()
-    flip = np.roll(g[::-1, ::-1], 1, axis=(0, 1))
-    cc = np.fft.ifft2(np.fft.fft2(g) * np.fft.fft2(flip)).real
+    # the picture convolved with itself: at a shift s it adds up g(x) g(s - x), which is large where the picture is
+    # the same turned half way round about s / 2
+    F = np.fft.fft2(g)
+    cc = np.fft.ifft2(F * F).real
     py, px = np.unravel_index(int(cc.argmax()), cc.shape)
     H, W = g.shape
     strength = float(cc.max() / ((g * g).sum() or 1))
@@ -241,11 +247,11 @@ def offset_paths(paths, dx, dy):
     return out if n else re.sub(r'<path ', f'<path transform="translate({fmt(dx)},{fmt(dy)})" ', paths)
 
 
-def tile_svg(layers, W, H, pad, title='Telios'):
+def tile_svg(layers, W, H, pad, title='Telios', pad_y=None):
     groups = []
     for n, l in enumerate(layers):
         label = l['name'].replace('&', 'and').replace('"', "'").replace('<', '').replace('>', '')
-        groups.append(f'<g id="{slug(l["name"], n)}" inkscape:groupmode="layer" inkscape:label="{label}" fill="{l["color"]}">{offset_paths(l["paths"], -pad, -pad)}</g>')
+        groups.append(f'<g id="{slug(l["name"], n)}" inkscape:groupmode="layer" inkscape:label="{label}" fill="{l["color"]}">{offset_paths(l["paths"], -pad, -(pad if pad_y is None else pad_y))}</g>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="{INKSCAPE}" width="{W}" height="{H}" viewBox="0 0 {W} {H}">'
             f'<title>{title}</title>{"".join(groups)}</svg>\n')
 
@@ -289,6 +295,10 @@ def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND)
     row, col = axis_curves(gray)
     px, py = period_of_curve(row), period_of_curve(col)
     if not px or not py:
+        # a strip that repeats along its length only is a border, not a pattern
+        along = px if gray.shape[1] >= gray.shape[0] else py
+        if (px or py) and not (px and py) and max(gray.shape) >= 2 * min(gray.shape) and along:
+            raise ValueError('This repeats along its length only: it is a border, not a pattern tile. Choose Made for → Border.')
         raise ValueError('No repeating pattern was found in this picture. A pattern tile needs a design that repeats at least twice across and down.')
     cw, rx = refine(gray, 0, px[0])
     ch, ry = refine(gray, 1, py[0])
@@ -320,4 +330,112 @@ def tile(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND)
         'size': [W, H], 'cell': [round(cw, 2), round(ch, 2)], 'tilt': round(float(tilt), 3), 'lattice': 'half-drop' if half > 0.5 else 'grid',
         'perCell': 2 if half > 0.5 else 1, 'repeatStrength': [round(rx, 3), round(ry, 3)], 'copies': copies, 'symmetry': round(symmetry, 3),
         'slid': [sx, sy], 'seam': seam, 'layers': summary(layers), 'bytes': len(svg),
+    }
+
+
+# ── A border: a strip that repeats along its length ──
+
+def centered_x(unit):
+    """The unit slid round its left and right edges so its axis of mirror symmetry (a palmette's middle) is in the middle, and how
+    alike it is to its mirror image there (0–1); the slide is only taken where that is strong."""
+    g = gray_of(unit)
+    g = g - g.mean()
+    F = np.fft.fft(g, axis=1)
+    cc = np.fft.ifft(F * F, axis=1).real.sum(axis=0)
+    px = int(cc.argmax())
+    strength = float(cc.max() / ((g * g).sum() or 1))
+    if strength < 0.5:
+        return unit, 0, strength
+    dx = int(round(unit.shape[1] / 2 - px / 2.0))
+    return np.roll(unit, dx, axis=1), dx, strength
+
+
+def strip_score(gray):
+    """How well a strip matches itself shifted along its length, on its middle rows (the ends of a turned copy are made up)."""
+    h = gray.shape[0]
+    return best_after_dip(axis_curves(gray[int(h * 0.15): int(h * 0.85) or None])[0])
+
+
+def strip_tilt(gray):
+    """The angle (degrees, counterclockwise) a strip is turned by: where turning it back makes it match itself best along its length.
+    None where no angle does clearly better than none (a level strip stays as it is)."""
+    k = min(1.0, 900 / max(gray.shape))
+    small = ndimage.zoom(gray, k, order=1) if k < 1 else gray
+    score = lambda d: strip_score(ndimage.rotate(small, -d, reshape=False, order=1, mode='reflect'))
+    coarse = {d: score(d) for d in np.arange(-3.0, 3.0 + 1e-9, 0.5)}
+    c = max(coarse, key=coarse.get)
+    fine = {d: score(d) for d in np.arange(c - 0.5, c + 0.5 + 1e-9, 0.1)}
+    f = max(fine, key=fine.get)
+    ds = sorted(fine)
+    i = ds.index(f)
+    deg = float(f)
+    if 0 < i < len(ds) - 1:
+        y0, y1, y2 = fine[ds[i - 1]], fine[ds[i]], fine[ds[i + 1]]
+        den = y0 - 2 * y1 + y2
+        if den:
+            deg = float(f + 0.5 * 0.1 * (y0 - y2) / den)
+    base = strip_score(small)
+    return deg if (abs(deg) >= 0.2 and fine[f] > base * 1.05) else 0.0
+
+
+def seam_x(band):
+    """The seam of a unit that repeats along its length: how much more the colors change across its left and right edges than just inside."""
+    across = (band[:, 0] != band[:, -1]).mean()
+    inner = np.mean([(band[:, k + 1] != band[:, k]).mean() for k in (0, 1, 2, band.shape[1] - 4, band.shape[1] - 3, band.shape[1] - 2)])
+    return float(round((across + 0.01) / (inner + 0.01), 3))
+
+
+def border(source, outdir, max_colors=8, twins=TWINS, title='Telios', blend=BLEND):
+    """A border (a band or strip) made into one exact unit that repeats along its length, traced to flat color layers. The strip is turned
+    to run level (a tall one a quarter turn), levelled by what it leans, its repeat found along its length to a fraction of a pixel, every
+    copy of it laid on one unit, and the unit traced with its left and right edges wrapped round it."""
+    rgba = np.asarray(load_rgba(source))
+    x0, y0, x1, y1 = design_box(rgba)
+    rgb = rgba[y0:y1, x0:x1, :3].astype(np.float32)
+    quarter = rgb.shape[0] > rgb.shape[1]
+    if quarter:
+        rgb = np.ascontiguousarray(np.rot90(rgb))
+    if rgb.shape[1] < 2 * 24 or rgb.shape[0] < 8:
+        raise ValueError('This picture is too small to find a border in.')
+    gray = gray_of(rgb)
+    tilt = strip_tilt(gray)
+    if tilt:
+        rgb = np.stack([ndimage.rotate(rgb[..., c], -tilt, reshape=False, order=1, mode='reflect') for c in range(3)], -1)
+        gray = gray_of(rgb)
+    row, _ = axis_curves(gray)
+    p = period_of_curve(row)
+    if not p:
+        raise ValueError('No repeat was found along this border: its design does not repeat along its length at least twice.')
+    cw, rx = refine(gray, 0, p[0])
+    H0, W0 = rgb.shape[:2]
+    if cw < 12 or cw > 0.62 * W0:
+        raise ValueError('The repeat found is bigger than the border can show twice: it needs to repeat at least one and a half times along its length.')
+    # a turned strip is made up near its ends, so the unit is laid from the middle of it where that still holds a few copies
+    if tilt and W0 > 3.2 * cw:
+        wc = int(min(W0, max(3.2 * cw, 0.5 * W0)))
+        left = (W0 - wc) // 2
+        rgb = rgb[:, left:left + wc]
+    S = 2.0 if max(cw, H0) < TILE_MIN / 2 else 1.0 if max(cw, H0) < TILE_MAX else TILE_MAX / max(cw, H0)
+    unit, copies, (W, H) = lay_tile(rgb, cw, H0, S)
+    unit, sx, symmetry = centered_x(unit)
+    labs = lab(unit)
+    pal, _ = palette_for(unit, labs, np.ones((H, W), bool), None, {'kind': 'none'}, False, max_colors, 1)
+    pal = clean_palette(pal, labs)
+    band = vq(labs.reshape(-1, 3), lab(pal))[0].reshape(H, W)
+    # smoothed along its length with its ends wrapped, but not across (its top and bottom are the strip's own edges)
+    votes = np.stack([ndimage.gaussian_filter((band == i).astype(np.float32), SMOOTH * S, mode=('nearest', 'wrap')) for i in range(len(pal))])
+    band = votes.argmax(0)
+    seam = seam_x(band)
+    colors = [hex_color(c) for c in pal]
+    names = [color_name(tuple(c)) for c in pal]
+    pad = max(8, int(0.12 * W))
+    layers = build_layers(np.pad(band, ((0, 0), (pad, pad)), mode='wrap'), np.ones((H, W + 2 * pad), bool), colors, names, speckle=int(4 * max(1, S)))
+    svg = tile_svg(layers, W, H, pad, title, pad_y=0)
+    with open(os.path.join(outdir, 'layered.svg'), 'w') as f:
+        f.write(svg)
+    Image.fromarray(np.clip(unit, 0, 255).astype(np.uint8)).save(os.path.join(outdir, 'tile.png'))
+    return {
+        'size': [W, H], 'cell': [round(cw, 2), float(H0)], 'tilt': round(float(tilt), 3), 'lattice': 'strip', 'perCell': 1,
+        'repeatStrength': [round(rx, 3), round(rx, 3)], 'copies': copies, 'symmetry': round(symmetry, 3), 'slid': [sx, 0], 'seam': seam,
+        'turned': bool(quarter), 'layers': summary(layers), 'bytes': len(svg),
     }
