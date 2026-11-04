@@ -19,7 +19,7 @@ export interface Folder {
   getFileHandle(name: string, options?: { create?: boolean }): Promise<{ createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }> }>;
   queryPermission?(options: { mode: 'readwrite' }): Promise<string>;
   requestPermission?(options: { mode: 'readwrite' }): Promise<string>;
-  values(): { next(): Promise<unknown> };
+  values?(): { next(): Promise<unknown> };
 }
 
 type Picker = (options: { id: string; mode: 'readwrite'; startIn: string }) => Promise<Folder>;
@@ -77,7 +77,7 @@ export async function folderToSave(): Promise<Folder | null> {
     try {
       if ((await before.queryPermission?.({ mode: 'readwrite' })) === 'granted' || (await before.requestPermission?.({ mode: 'readwrite' })) === 'granted') {
         // a folder that was renamed or moved can still say "granted"; reading it is what shows it is gone
-        await before.values().next();
+        await before.values?.().next();
         return before;
       }
     } catch { /* the folder is gone or no longer allowed: forget it and choose it again */ }
