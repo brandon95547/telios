@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, hasPackage, tracedOnly, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
+import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, hasPackage, workerOnly, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
@@ -164,7 +164,7 @@ export function Studio({ health }: { health: Health | null }) {
 
   // what the chosen type draws with must be ready: ComfyUI, or for a flat SVG the model
   const byModel = drawnByModel(options.type);
-  const traced = tracedOnly(options.type);
+  const traced = workerOnly(options.type);   // a trace or a cutout: the worker does it, nothing waits for ComfyUI or a model
   const notReady = !health || traced ? '' : byModel
     ? (health.model.ok ? '' : `The model is not ready: ${health.model.error ?? 'set one up in .env'}`)
     : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);

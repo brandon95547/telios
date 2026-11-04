@@ -25,8 +25,8 @@ const { fromAnalysis } = await import('../src/engine/read.ts');
 // ── The type ──
 
 test('Flat SVG is one of three types, with illustration and trace, and the types that were dropped are gone', () => {
-  assert.deepEqual(OUTPUT_TYPES.map((t) => t.value), ['illustration', 'trace', 'vector']);
-  assert.deepEqual(OUTPUT_TYPES.map((t) => t.label), ['Illustration', 'Trace', 'Flat SVG']);
+  assert.deepEqual(OUTPUT_TYPES.map((t) => t.value), ['illustration', 'trace', 'cutout', 'vector']);
+  assert.deepEqual(OUTPUT_TYPES.map((t) => t.label), ['Illustration', 'Trace', 'Cutout', 'Flat SVG']);
   assert.equal(typeInfo('vector').label, 'Flat SVG');
   assert.ok(typeInfo('vector').vector);
   assert.deepEqual(OUTPUT_TYPES.filter((t) => drawnByModel(t.value)).map((t) => t.value), ['vector']);

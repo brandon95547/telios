@@ -3,8 +3,8 @@
 Telios has two tools.
 
 **Restyle** (the home page) turns pictures (frames, ornaments, characters, icons, anything) into one of
-three things: an **Illustration** (ComfyUI redraws it in one of Talari's art styles and one of its themes),
-a **Trace** (the picture itself in flat colors, as SVG) or a **Flat SVG** (new vector art drawn by a model).
+four things: an **Illustration** (ComfyUI redraws it in one of Talari's art styles and one of its themes),
+a **Trace** (the picture itself in flat colors, as SVG), a **Cutout** (a one-ink object lifted off its background, as a transparent WebP) or a **Flat SVG** (new vector art drawn by a model).
 Add one picture,
 several, a folder, or a zip of them (PNG, JPEG, WebP, TIFF, GIF, BMP, SVG, EPS, PDF pages); the
 results come back in a grid to tick, download as a zip (in folders by type, style and theme), delete,
@@ -31,6 +31,7 @@ It works three ways:
 - **Re-illustrate** (needs a model; minutes): a vision model writes the design as a drawing
   program, renders it, compares it with the original and refines it. New drawing, not a trace.
 - **Trace** (seconds): the upload itself traced into color layers, flaws included.
+- **Cutout** (seconds): a one-ink object on a plain background lifted off it: the background made clear, a turned picture set level, edges cleaned up, a small scan enlarged smoothly; a transparent WebP or PNG (up to 2400 px). Worker only: no ComfyUI, no model.
 
 ## Run it
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { drawnByModel, hasPackage, tracedOnly, findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
+import { drawnByModel, hasPackage, tracedOnly, cutoutOnly, findStyle, findTheme, settingRows, typeInfo, type RestyleResult } from '@telios/shared';
 import { api, restyle } from '../api.ts';
 import { PromptDialog } from './PromptDialog.tsx';
 
@@ -46,8 +46,8 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
             <figcaption>The original</figcaption>
           </figure>
           <figure className={`result ${ground}`}>
-            <img src={api.file(r.files.view)} alt={tracedOnly(o.type) ? 'Traced' : 'Redrawn'} />
-            <figcaption>{tracedOnly(o.type) ? 'Traced' : 'Redrawn'}</figcaption>
+            <img src={api.file(r.files.view)} alt={cutoutOnly(o.type) ? 'Cutout' : tracedOnly(o.type) ? 'Traced' : 'Redrawn'} />
+            <figcaption>{cutoutOnly(o.type) ? 'Cutout' : tracedOnly(o.type) ? 'Traced' : 'Redrawn'}</figcaption>
           </figure>
         </div>
         <div className="viewer-foot">
@@ -58,7 +58,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
             {byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download title="The drawing alone, without its fitting data">SVG alone</a>}
             {byModel && r.files.layout && <a href={restyle.downloadOne(r.id, 'layout')} download>Fitting data</a>}
             {byModel && 'Preview:'}
-            {(['png', 'webp', 'jpeg'] as const).map((f) => <a key={f} href={restyle.downloadOne(r.id, f)} download>{f.toUpperCase()}</a>)}
+            {(cutoutOnly(o.type) ? ['webp', 'png'] as const : ['png', 'webp', 'jpeg'] as const).map((f) => <a key={f} href={restyle.downloadOne(r.id, f)} download>{f.toUpperCase()}</a>)}
             {!byModel && r.files.svg && <a href={restyle.downloadOne(r.id, 'svg')} download>SVG</a>}
           </span>
           <button type="button" disabled={index === results.length - 1} onClick={() => setIndex(index + 1)}>Next →</button>

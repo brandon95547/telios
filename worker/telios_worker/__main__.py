@@ -13,6 +13,7 @@
   pickkey   <in.png>                                            the key color (green or blue) a picture can be cut out of
   ground    <in.png> <out.png> [--color #00ff00]                a picture's white ground painted in a key color
   chroma    <in.png> <out.png> [--color green|blue]             a picture on a key-color backdrop cut out of it
+  cutout    <source.png> <out-dir> [--cleanup 0|1|2] [--no-straighten]   a one-ink object lifted off its plain ground
   pack      <manifest.json> <out.zip>                           files packed into a zip
 """
 import argparse
@@ -128,6 +129,11 @@ def main(argv=None):
     ch.add_argument('source')
     ch.add_argument('out')
     ch.add_argument('--color', default='green', choices=['green', 'blue'])
+    cu = sub.add_parser('cutout')
+    cu.add_argument('source')
+    cu.add_argument('outdir')
+    cu.add_argument('--cleanup', type=int, default=1, choices=[0, 1, 2])
+    cu.add_argument('--no-straighten', action='store_true')
     pk = sub.add_parser('pack')
     pk.add_argument('manifest')
     pk.add_argument('out')
@@ -150,6 +156,10 @@ def main(argv=None):
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
             out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth))
+        elif args.cmd == 'cutout':
+            from .cutout import cutout
+            os.makedirs(args.outdir, exist_ok=True)
+            out(cutout(args.source, args.outdir, args.cleanup, not args.no_straighten))
         elif args.cmd == 'tile':
             from .tile import border, tile
             os.makedirs(args.outdir, exist_ok=True)

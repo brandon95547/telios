@@ -9,9 +9,9 @@ export { CATALOG };
 
 /** What a picture is redrawn as: an illustration (ComfyUI, led by the picture), a trace (the worker, the picture's own shapes in flat
  * colors) or a flat SVG (a model writes it as a drawing program, the Vector redraw's loop). */
-export type OutputType = 'illustration' | 'vector' | 'trace';
+export type OutputType = 'illustration' | 'vector' | 'trace' | 'cutout';
 /** The types ComfyUI draws. */
-export type ComfyType = Exclude<OutputType, 'vector' | 'trace'>;
+export type ComfyType = Exclude<OutputType, 'vector' | 'trace' | 'cutout'>;
 
 export interface OutputTypeInfo {
   value: OutputType;
@@ -30,6 +30,9 @@ export const OUTPUT_TYPES: OutputTypeInfo[] = [
     styles: null },
   // Traced, not drawn: the picture's own shapes and layout, in a few flat colors, with no redraw, so neither ComfyUI nor a model.
   { value: 'trace', label: 'Trace', hint: 'The picture itself traced into flat colors, one SVG layer per color: its shapes and layout kept exactly, with no redraw', vector: true, quality: 'fast', styles: [] },
+  // Lifted, not drawn: a one-ink object (fine detail, nothing that repeats) on a plain ground, the ground made clear, the picture set level
+  // and cleaned up, as a transparent WebP or PNG. The worker's own work, so neither ComfyUI nor a model.
+  { value: 'cutout', label: 'Cutout', hint: 'A one-ink object lifted off its plain background: the background made clear, the picture set level and cleaned up, as a transparent WebP or PNG', vector: false, quality: 'fast', styles: [] },
   // Drawn by the model, not ComfyUI: no art style or theme, and no sampler quality (it is only a
   // placeholder here, for the Quality field it does not show).
   { value: 'vector', label: 'Flat SVG', hint: 'New flat vector art for a frame, border, corner or ornament, one layer per color, with the data that fits it to any page', vector: true, quality: 'fast', styles: [] },
@@ -48,6 +51,12 @@ export const drawnByModel = (type: OutputType) => type === 'vector';
 
 /** Whether the picture is traced as it is (the worker's trace), not redrawn by ComfyUI or a model. */
 export const tracedOnly = (type: OutputType) => type === 'trace';
+
+/** Whether the picture is lifted off its background as it is (the worker's cutout): a transparent picture, no SVG. */
+export const cutoutOnly = (type: OutputType) => type === 'cutout';
+
+/** Whether the worker does it all on the CPU (a trace or a cutout): no ComfyUI, no model, no theme, one version. */
+export const workerOnly = (type: OutputType) => type === 'trace' || type === 'cutout';
 
 /** What a trace can be made for: an object (the default), a pattern tile (one exact repeat, across and down) or a border (one exact repeat
  * along its length). Not a frame or a corner: an app fits those to a page by data a trace does not have. */
@@ -266,6 +275,8 @@ export interface RestyleResult {
    * library, and removed with this result), and what that drawing says of itself. */
   designId?: string;
   drawing?: VectorDrawing;
+  /** A cutout: the ink it was cut in, how far it was turned to level it (degrees, 0 where it was level) and how much it was enlarged. */
+  cutout?: { ink: string; tilt: number; enlarged: number };
   /** A trace: the colors its layers were traced in, dark to light; and for a pattern tile, how its repeat was found and cut. */
   traced?: { colors: string[]; tile?: TraceTile };
   /** Paths inside the data folder. `png` is the preview for a flat SVG; `layout` is its fitting data. */
@@ -354,19 +365,21 @@ export function cleanOptions(raw: any): RestyleOptions {
   // only an illustration has a style to rotate; the rotation gives each picture its own, so none is chosen here
   o.rotateStyles = raw?.rotateStyles === true && PICTURE_LED_TYPES.includes(o.type);
   if (o.rotateStyles) o.style = '';
-  o.theme = !drawnByModel(o.type) && !tracedOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
+  o.theme = !drawnByModel(o.type) && !workerOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
   o.variations = Math.max(1, Math.min(4, Math.round(Number(raw?.variations) || 1)));
   o.background = pick(raw?.background, ['original', 'transparent', 'white', 'black', 'green'] as const, o.background);
   // a flat SVG has no ground of its own to keep, so it always has a choice (a trace may keep the picture's own ground, a scan's margin included)
   if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type) && !tracedOnly(o.type)) o.background = 'transparent';
+  // a cutout is a transparent picture, and comes as WebP or PNG
+  if (cutoutOnly(o.type)) { o.background = 'transparent'; o.format = raw?.format === 'png' ? 'png' : 'webp'; }
   o.size = pick(raw?.size, ['drawn', 'original', '2x', '4x'] as const, o.size);
   o.enhance = raw?.enhance === true;
-  o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
+  if (!cutoutOnly(o.type)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   // a trace is the same every time: one version
-  if (tracedOnly(o.type)) o.variations = 1;
+  if (workerOnly(o.type)) o.variations = 1;
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
@@ -383,7 +396,7 @@ const SIZE_WORDS: Record<RestyleOptions['size'], string> = { drawn: 'as drawn', 
 
 /** A result's settings as the preview says them, in plain words. What was only recorded later is left
  * out of a result that predates it, never guessed. */
-export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'seed' | 'size' | 'drawing'> & { traced?: RestyleResult['traced'] }): SettingRow[] {
+export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'seed' | 'size' | 'drawing'> & { traced?: RestyleResult['traced']; cutout?: RestyleResult['cutout'] }): SettingRow[] {
   const o = r.options;
   const s = r.settings;
   const q = qualityOf(o);
@@ -401,6 +414,17 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     rows.push({ label: 'Background', value: BACKGROUND_LABEL[o.background] });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
+    return rows;
+  }
+  if (cutoutOnly(o.type)) {
+    const c = r.cutout;
+    rows.push({ label: 'Cut out as', value: `one ink${c ? ` (${c.ink})` : ''}, the background made clear; nothing is redrawn` });
+    rows.push({ label: 'Clean up', value: CLEANUPS.find((x) => x.value === o.cleanup)?.label ?? 'Light' });
+    if (c) {
+      rows.push({ label: 'Straightened', value: Math.abs(c.tilt) < 0.1 ? 'it was level' : `turned ${Math.abs(c.tilt)}° ${c.tilt > 0 ? 'back' : 'the other way'} to level it` });
+      if (c.enlarged > 1.05) rows.push({ label: 'Enlarged', value: `${c.enlarged}×, smoothly, so a small scan's edges stay crisp` });
+    }
+    if (r.size) rows.push({ label: 'Result', value: `${o.format.toUpperCase()}, transparent, ${r.size[0]} × ${r.size[1]} px` });
     return rows;
   }
   if (tracedOnly(o.type)) {

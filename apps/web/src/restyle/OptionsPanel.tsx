@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, findStyle, styleChoices, styleFits, tracedOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, findStyle, styleChoices, styleFits, tracedOnly, cutoutOnly, workerOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -30,15 +30,19 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
   const type = typeInfo(options.type);
   const byModel = drawnByModel(options.type);
   const traced = tracedOnly(options.type);
-  // what is redrawn by ComfyUI (the rest is drawn by a model or only traced)
-  const redraw = !byModel && !traced;
+  const cutout = cutoutOnly(options.type);
+  const worker = workerOnly(options.type);   // the worker does it all: no redraw, no theme, one version
+  // what is redrawn by ComfyUI (the rest is drawn by a model or only traced or cut out)
+  const redraw = !byModel && !worker;
   const pictureLed = PICTURE_LED_TYPES.includes(options.type);
   const chooseType = (t: OutputType) => {
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (!PICTURE_LED_TYPES.includes(t)) set('rotateStyles', false);
-    if (drawnByModel(t) || tracedOnly(t)) set('theme', '');
-    if (tracedOnly(t)) set('variations', 1);
+    if (drawnByModel(t) || workerOnly(t)) set('theme', '');
+    if (workerOnly(t)) set('variations', 1);
+    if (cutoutOnly(t)) { set('background', 'transparent'); set('format', 'webp'); }
+    else if (cutoutOnly(options.type) && options.format !== 'png') set('format', 'png');
     set('madeFor', drawnByModel(t) ? options.madeFor : tracedOnly(t) ? 'object' : 'auto');
     if (!PICTURE_LED_TYPES.includes(t)) {
       set('whole', false);
@@ -80,13 +84,13 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</div>
           </label>
         )}
-        {traced && options.madeFor === 'object' && (
+        {(cutout || (traced && options.madeFor === 'object')) && (
           <label className="field">
             <div className="label">Clean up</div>
             <select value={options.cleanup} onChange={(e) => set('cleanup', e.target.value as RestyleOptions['cleanup'])}>
               {CLEANUPS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
-            <div className="sub">{CLEANUPS.find((c) => c.value === options.cleanup)?.hint} A repeating border or tile is already cleaned by averaging every copy of its repeat.</div>
+            <div className="sub">{CLEANUPS.find((c) => c.value === options.cleanup)?.hint} {!cutout && 'A repeating border or tile is already cleaned by averaging every copy of its repeat.'}</div>
           </label>
         )}
         {byModel && (
@@ -142,13 +146,14 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             {noWhole && <div className="sub warn">{noWhole}</div>}
           </div>
         )}
+        {cutout && <div className="sub">Lifted off its background as it is, in seconds, by the worker: neither ComfyUI nor a model draws anything. The picture is one ink on a plain ground (an engraving, a stamp, a silhouette); the ground is made clear, a turned picture is set level, and a small scan is enlarged smoothly. For a picture in several colors, use Trace.</div>}
         {traced && <div className="sub">Traced as it is, in seconds, by the worker: neither ComfyUI nor a model draws anything, so the shapes and layout stay exactly the original's. A scan's few printed colors become flat layers (colors that differ only by the print's grain are one). It is the same every time, so there is one version.</div>}
-        {!traced && <div className="field">
+        {!worker && <div className="field">
           <div className="label">Versions of each picture</div>
           <Seg label="Versions of each picture" value={options.variations} onChange={(v) => set('variations', v)} options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))} />
           {byModel && <div className="sub">Each version is a separate drawing, and costs what one does.</div>}
         </div>}
-        {!traced && <label className="field">
+        {!worker && <label className="field">
           <div className="label">{byModel ? 'Extra words for the model' : 'Extra words for the prompt'}</div>
           <input className="text" value={options.notes} maxLength={300} placeholder={byModel ? 'Optional: one ink, keep the rosettes, a deeper foot…' : 'Optional: gold and deep red, thin lines…'} onChange={(e) => set('notes', e.target.value)} />
         </label>}
@@ -162,7 +167,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <select value={options.format} onChange={(e) => set('format', e.target.value as RestyleOptions['format'])}>
               <option value="png">PNG{options.background === 'transparent' ? ' (transparent)' : ''}</option>
               <option value="webp">WebP{options.background === 'transparent' ? ' (transparent)' : ''}</option>
-              <option value="jpeg">JPEG</option>
+              {!cutout && <option value="jpeg">JPEG</option>}
             </select>
           </label>
           {redraw && <label className="field">
@@ -188,7 +193,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             {QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}: {q.size} px, {q.steps} steps</option>)}
           </select>
         </label>}
-        <label className="field">
+        {!cutout && <label className="field">
           <div className="label">Background</div>
           <select value={options.background} onChange={(e) => set('background', e.target.value as RestyleOptions['background'])}>
             {(pictureLed || traced) && <option value="original">Keep original</option>}
@@ -202,7 +207,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
           {options.background !== 'white' && options.background !== 'original' && options.type === 'illustration' && health && !health.comfy.cutout && (
             <div className="sub">No background-removal model here, so illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
           )}
-        </label>
+        </label>}
         {redraw && <Toggle label="Enhance details" on={options.enhance} onChange={(v) => set('enhance', v)} disabled={health ? !health.comfy.upscale : false}
           hint={health && !health.comfy.upscale ? 'ComfyUI has no upscaling model, so enlarging is a plain resize.' : 'Enlarge with an upscaling model, which redraws fine detail, rather than a plain resize.'} />}
         <Toggle label="Process every picture" on={batchAll} onChange={setBatchAll} hint="Off: only the pictures you tick." />
