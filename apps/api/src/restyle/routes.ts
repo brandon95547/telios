@@ -42,7 +42,12 @@ export function resultFolder(r: RestyleResult) {
   const parts = [typeInfo(r.options.type).label, findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean);
   return [parts.join(' - '), r.folder].filter(Boolean).join('/');
 }
-export const resultName = (r: RestyleResult) => `${cleanName(r.inputName)}${r.options.variations > 1 ? `-v${r.variation}` : ''}`;
+/** The name a result is saved under: the picture's, then the illustration style it was drawn in where it has one ("Frame 01 - Art Deco"),
+ * then its version where there are several. Every download, zip and approved save takes it from here. */
+export function resultName(r: RestyleResult) {
+  const style = findStyle(r.options.style)?.label;
+  return `${cleanName(r.inputName)}${style ? ` - ${cleanName(style)}` : ''}${r.options.variations > 1 ? `-v${r.variation}` : ''}`;
+}
 
 export function restyleRoutes(toWorker: (m: ToWorker) => void) {
   const router = express.Router();

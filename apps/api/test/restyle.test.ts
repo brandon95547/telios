@@ -90,7 +90,12 @@ test('names: a token\'s account, a zip\'s folders', () => {
   assert.equal(tokenUser('nonsense'), null);
   const r = { inputName: 'frame 01', folder: 'Frames/Gold', variation: 2, options: { ...DEFAULT_OPTIONS, type: 'illustration', style: 'art-nouveau', theme: 'gothic', variations: 3 } } as any;
   assert.equal(resultFolder(r), 'Illustration - Art Nouveau - Gothic/Frames/Gold');
-  assert.equal(resultName(r), 'frame 01-v2');
+  assert.equal(resultName(r), 'frame 01 - Art Nouveau-v2', 'the style it was drawn in is in the name');
+  // no style assigned: the name is the picture's alone
+  assert.equal(resultName({ ...r, options: { ...r.options, style: '' } }), 'frame 01-v2');
+  assert.equal(resultName({ ...r, options: { ...r.options, style: '', variations: 1 } }), 'frame 01');
+  assert.equal(resultName({ ...r, options: { ...r.options, style: 'rubber-hose', variations: 1 } }), 'frame 01 - Rubber Hose Cartoon', 'a substyle is named as it is in the dropdown');
+  assert.equal(resultName({ ...r, inputName: 'a/b:c', options: { ...r.options, style: 'art-deco', variations: 1 } }), 'a b c - Art Deco', 'a name the browser would refuse is cleaned');
   // a result made under a type that is gone is still filed under its old name
   assert.equal(resultFolder({ ...r, options: { ...r.options, type: 'lineart' } }), 'Line art - Art Nouveau - Gothic/Frames/Gold');
 });

@@ -111,4 +111,23 @@ test('with it off, the style chosen is drawn on every picture, and none when non
   assert.deepEqual((none.body.results as RestyleResult[]).map((r) => [r.options.style, r.options.rotateStyles]), [['', false], ['', false], ['', false]]);
 });
 
+test('a download, and so an approved save, is named for the picture and the style it was drawn in', async () => {
+  const { saveResult, resultDir, rel } = await import('../src/restyle/store.ts');
+  const make = async (id: string, style: string) => {
+    fs.mkdirSync(resultDir(id), { recursive: true });
+    await sharp({ create: { width: 20, height: 20, channels: 3, background: '#336699' } }).png().toFile(path.join(resultDir(id), 'result.png'));
+    saveResult({
+      id, batchId: 'b', inputId: 'i', inputName: 'Rose frame', folder: '', variation: 1, status: 'done', createdAt: new Date().toISOString(),
+      options: { ...DEFAULT_OPTIONS, type: 'illustration', style, format: 'png' },
+      files: { png: rel(path.join(resultDir(id), 'result.png')), thumb: '', view: '', original: '' },
+    });
+  };
+  await make('xnamea1', 'art-deco');
+  await make('xnameb1', '');
+  const named = await fetch(`${base}/results/xnamea1/download`);
+  assert.equal(decodeURIComponent(/filename="([^"]+)"/.exec(named.headers.get('content-disposition') ?? '')![1]), 'Rose frame - Art Deco.png');
+  const plain = await fetch(`${base}/results/xnameb1/download`);
+  assert.equal(decodeURIComponent(/filename="([^"]+)"/.exec(plain.headers.get('content-disposition') ?? '')![1]), 'Rose frame.png');
+});
+
 test('stop the routes', () => { server.close(); });
