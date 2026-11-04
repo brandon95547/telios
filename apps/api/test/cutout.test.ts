@@ -13,8 +13,8 @@ const { getResult, resultDir, saveResult } = await import('../src/restyle/store.
 
 test('Cutout is a worker type: no ComfyUI, no model, one version, no theme, always transparent, WebP or PNG', () => {
   assert.equal(typeInfo('cutout').label, 'Cutout');
-  assert.deepEqual(OUTPUT_TYPES.filter((t) => cutoutOnly(t.value)).map((t) => t.value), ['cutout']);
-  assert.ok(workerOnly('cutout') && workerOnly('trace') && !workerOnly('illustration'));
+  assert.deepEqual(OUTPUT_TYPES.filter((t) => cutoutOnly({ type: t.value as any })).map((t) => t.value), ['cutout']);
+  assert.ok(workerOnly({ type: 'cutout' as any }) && workerOnly({ type: 'trace' as any }) && !workerOnly({ type: 'illustration' as any }));
   const o = cleanOptions({ type: 'cutout', variations: 3, theme: 'celtic', style: 'art-deco', background: 'white', format: 'jpeg' });
   assert.equal(o.variations, 1);
   assert.equal(o.theme, '');

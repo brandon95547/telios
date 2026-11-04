@@ -51,17 +51,17 @@ const restyleQueue = new Queue(1);
 const drawing = new Map<string, AbortController>();
 
 function restyle(resultId: string) {
-  const type = getResult(resultId)?.options.type ?? 'illustration';
-  const byModel = drawnByModel(type);
+  const opts = getResult(resultId)?.options ?? { type: 'illustration' as const };
+  const byModel = drawnByModel(opts);
   // a trace or a cutout is the worker's own work on the CPU: it does not wait for the GPU
-  (byModel ? runQueue : workerOnly(type) ? traceQueue : restyleQueue).push(async () => {
+  (byModel ? runQueue : workerOnly(opts) ? traceQueue : restyleQueue).push(async () => {
     if (getResult(resultId)?.status !== 'queued') return;   // stopped or deleted while it waited
     const controller = new AbortController();
     drawing.set(resultId, controller);
     try {
       if (byModel) await drawVector(resultId, controller.signal, { read: ingest, draw: runJob });
-      else if (cutoutOnly(type)) await drawCutout(resultId, controller.signal);
-      else if (workerOnly(type)) await drawTrace(resultId, controller.signal);
+      else if (cutoutOnly(opts)) await drawCutout(resultId, controller.signal);
+      else if (workerOnly(opts)) await drawTrace(resultId, controller.signal);
       else await drawResult(resultId, controller.signal);
     } finally { drawing.delete(resultId); }
   });

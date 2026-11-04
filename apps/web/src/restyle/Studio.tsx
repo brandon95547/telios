@@ -163,8 +163,8 @@ export function Studio({ health }: { health: Health | null }) {
   };
 
   // what the chosen type draws with must be ready: ComfyUI, or for a flat SVG the model
-  const byModel = drawnByModel(options.type);
-  const traced = workerOnly(options.type);   // a trace or a cutout: the worker does it, nothing waits for ComfyUI or a model
+  const byModel = drawnByModel(options);
+  const traced = workerOnly(options);   // a trace or a cutout: the worker does it, nothing waits for ComfyUI or a model
   const notReady = !health || traced ? '' : byModel
     ? (health.model.ok ? '' : `The model is not ready: ${health.model.error ?? 'set one up in .env'}`)
     : (health.comfy.ready ? '' : `ComfyUI is not ready: ${health.comfy.detail}`);
@@ -274,7 +274,7 @@ export function Studio({ health }: { health: Health | null }) {
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>
                         {hasPackage(r)
                           ? <DownloadMenu id={r.id} name={r.inputName} />
-                          : <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options.type) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>}
+                          : <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>}
                       </div>
                     )}
                   </div>

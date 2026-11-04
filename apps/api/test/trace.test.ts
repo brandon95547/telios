@@ -17,7 +17,7 @@ const { getResult, resultDir, saveResult } = await import('../src/restyle/store.
 test('Trace is a type that only traces: neither ComfyUI nor a model draws it', () => {
   assert.equal(typeInfo('trace').label, 'Trace');
   assert.ok(typeInfo('trace').vector);
-  assert.deepEqual(OUTPUT_TYPES.filter((t) => tracedOnly(t.value)).map((t) => t.value), ['trace']);
+  assert.deepEqual(OUTPUT_TYPES.filter((t) => tracedOnly({ type: t.value as any })).map((t) => t.value), ['trace']);
 });
 
 test('a trace is one version, with no theme, and may keep the picture’s own ground', () => {

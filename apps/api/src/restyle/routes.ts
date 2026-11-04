@@ -156,7 +156,7 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
     const inputs = ids(req.body?.inputIds).map(getInput).filter((i): i is RestyleInput => i?.status === 'ready');
     if (!inputs.length) return res.status(400).json({ error: 'Choose pictures that are ready to redraw.' });
     // a flat SVG is written by the model, so it needs one set up; ComfyUI's pictures check theirs as they are drawn
-    if (drawnByModel(options.type) && !provider().provider) return res.status(409).json({ error: provider().error });
+    if (drawnByModel(options) && !provider().provider) return res.status(409).json({ error: provider().error });
     const batchId = newResultId();
     const created: RestyleResult[] = [];
     for (const [n, input] of inputs.entries()) {

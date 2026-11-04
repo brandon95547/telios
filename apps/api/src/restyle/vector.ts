@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, classOf, kindFor } from '@telios/shared';
+import { BACKGROUND_HEX, REMIX, REMIX_BRIEF, classOf, kindFor } from '@telios/shared';
 import type { Design, RunEvent } from '@telios/shared';
 import { DATA } from '../config.ts';
 import { provider } from '../engine/llm.ts';
@@ -59,13 +59,13 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     updateDesign(design.id, (d) => {
       const rd = d.reading;
       if (!rd) return;
-      rd.kind = kindFor(o.madeFor, rd.kind);
+      rd.kind = kindFor(o.madeFor === REMIX ? 'auto' : o.madeFor, rd.kind);
       const axis = ({ frame: 'edges', border: 'x', tile: 'lattice' } as const)[classOf(rd.kind) as 'frame' | 'border' | 'tile'];
       if (axis && rd.repeats.axis === 'none') rd.repeats = { axis, description: rd.repeats.description || `drawn as a ${rd.kind}, as asked`, count: rd.repeats.count };
       rd.confirmed = true;
     });
 
-    const run = newRun(getDesign(design.id)!, 'reillustrate', { note: o.notes || undefined });
+    const run = newRun(getDesign(design.id)!, 'reillustrate', { note: (o.madeFor === REMIX ? [REMIX_BRIEF, o.notes] : [o.notes]).filter(Boolean).join(' ') || undefined });
     stage('Studying the picture', drawingStage('plan', '', run.options.maxRenders));
     await steps.draw(run.id, { signal, onEvent: (e) => { if (e.type === 'status' && e.status === 'running' && e.message) stage(e.message, drawingStage(e.stage, e.message, run.options.maxRenders)); } });
     stopped();

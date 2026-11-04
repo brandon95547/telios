@@ -46,17 +46,24 @@ const RETIRED: Record<string, Pick<OutputTypeInfo, 'label' | 'vector'>> = {
   render3d: { label: '3D illustration', vector: false },
 };
 
+/** Remix, a trace's fourth target: not the picture's own shapes but a new drawing inspired by it (same subject, style and colors, different
+ * shapes), so a batch of butterflies comes back as a batch of new butterflies. A model writes it, as for a flat SVG, and it costs the same. */
+export const REMIX = 'remix';
+export const REMIX_TARGET = { value: REMIX, label: 'Inspired by (Remix)', hint: 'A new drawing inspired by the picture: the same subject, style and colors, but its own shapes, so a batch of butterflies comes back as a batch of new butterflies. A model draws each one, as a flat SVG, and costs the same.' } as const;
+/** What the model is told for a remix. */
+export const REMIX_BRIEF = 'Draw a new piece inspired by this one, not a copy of it: the same kind of subject, the same art style, line weight and color palette, but its own pose, proportions, markings and details, so that placed beside the original it is clearly another piece of the same family. Do not reproduce the original’s outlines.';
+
 /** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI. */
-export const drawnByModel = (type: OutputType) => type === 'vector';
+export const drawnByModel = (o: { type: OutputType; madeFor?: string }) => o.type === 'vector' || (o.type === 'trace' && o.madeFor === REMIX);
 
 /** Whether the picture is traced as it is (the worker's trace), not redrawn by ComfyUI or a model. */
-export const tracedOnly = (type: OutputType) => type === 'trace';
+export const tracedOnly = (o: { type: OutputType; madeFor?: string }) => o.type === 'trace' && o.madeFor !== REMIX;
 
 /** Whether the picture is lifted off its background as it is (the worker's cutout): a transparent picture, no SVG. */
-export const cutoutOnly = (type: OutputType) => type === 'cutout';
+export const cutoutOnly = (o: { type: OutputType }) => o.type === 'cutout';
 
 /** Whether the worker does it all on the CPU (a trace or a cutout): no ComfyUI, no model, no theme, one version. */
-export const workerOnly = (type: OutputType) => type === 'trace' || type === 'cutout';
+export const workerOnly = (o: { type: OutputType; madeFor?: string }) => tracedOnly(o) || cutoutOnly(o);
 
 /** What a trace can be made for: an object (the default), a pattern tile (one exact repeat, across and down) or a border (one exact repeat
  * along its length). Not a frame or a corner: an app fits those to a page by data a trace does not have. */
@@ -170,7 +177,7 @@ export interface RestyleOptions {
   /** The shape of the canvas a whole figure is drawn on. */
   ratio: Ratio;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
-  madeFor: Target;
+  madeFor: Target | typeof REMIX;
   /** A trace made for an object: how far its edges are evened out. */
   cleanup: CleanUp;
 }
@@ -365,26 +372,29 @@ export function cleanOptions(raw: any): RestyleOptions {
   // only an illustration has a style to rotate; the rotation gives each picture its own, so none is chosen here
   o.rotateStyles = raw?.rotateStyles === true && PICTURE_LED_TYPES.includes(o.type);
   if (o.rotateStyles) o.style = '';
-  o.theme = !drawnByModel(o.type) && !workerOnly(o.type) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
+  o.theme = !drawnByModel(o) && !workerOnly(o) && typeof raw?.theme === 'string' && findTheme(raw.theme) ? raw.theme : '';
   o.closeness = pick(raw?.closeness, CLOSENESS.map((c) => c.value), o.closeness);
   o.quality = pick(raw?.quality, ['auto', 'fast', 'standard', 'high'] as const, o.quality);
   o.variations = Math.max(1, Math.min(4, Math.round(Number(raw?.variations) || 1)));
   o.background = pick(raw?.background, ['original', 'transparent', 'white', 'black', 'green'] as const, o.background);
   // a flat SVG has no ground of its own to keep, so it always has a choice (a trace may keep the picture's own ground, a scan's margin included)
-  if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type) && !tracedOnly(o.type)) o.background = 'transparent';
+  if (o.background === 'original' && !PICTURE_LED_TYPES.includes(o.type) && !tracedOnly(o)) o.background = 'transparent';
   // a cutout is a transparent picture, and comes as WebP or PNG
-  if (cutoutOnly(o.type)) { o.background = 'transparent'; o.format = raw?.format === 'png' ? 'png' : 'webp'; }
+  if (cutoutOnly(o)) { o.background = 'transparent'; o.format = raw?.format === 'png' ? 'png' : 'webp'; }
   o.size = pick(raw?.size, ['drawn', 'original', '2x', '4x'] as const, o.size);
   o.enhance = raw?.enhance === true;
-  if (!cutoutOnly(o.type)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
+  if (!cutoutOnly(o)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   // a trace is the same every time: one version
-  if (workerOnly(o.type)) o.variations = 1;
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
-  o.madeFor = drawnByModel(o.type) ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
-    : tracedOnly(o.type) ? pick(raw?.madeFor, TRACE_TARGETS.map((t) => t.value), 'object') : 'auto';
+  o.madeFor = o.type === 'vector' ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
+    : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX], 'object') : 'auto';
+  // a trace and a cutout are the same every time: one version (a remix is a new drawing each time, so it may have several)
+  if (workerOnly(o)) o.variations = 1;
+  // a remix is drawn by a model, which has no theme and may keep no ground
+  if (o.madeFor === REMIX) { o.theme = ''; if (o.background === 'original') o.background = 'transparent'; }
   return o;
 }
 
@@ -401,7 +411,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   const s = r.settings;
   const q = qualityOf(o);
   const rows: SettingRow[] = [];
-  if (drawnByModel(o.type)) {
+  if (drawnByModel(o)) {
     const d = r.drawing;
     if (d) {
       rows.push({ label: 'Drawn by', value: d.model });
@@ -411,12 +421,13 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
       rows.push({ label: 'Read as', value: `${d.kind}, ${COLOR_RULE_WORDS[d.colorMode] ?? d.colorMode}` });
       if (d.appReady) rows.push({ label: 'App-ready', value: d.appReady.ok ? `yes, all ${d.appReady.checks.length} checks pass` : `no: ${d.appReady.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(', ')}` });
     }
-    if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
+    if (o.madeFor === REMIX) rows.push({ label: 'Made as', value: REMIX_TARGET.label });
+    else if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     rows.push({ label: 'Background', value: BACKGROUND_LABEL[o.background] });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
     return rows;
   }
-  if (cutoutOnly(o.type)) {
+  if (cutoutOnly(o)) {
     const c = r.cutout;
     rows.push({ label: 'Cut out as', value: `one ink${c ? ` (${c.ink})` : ''}, the background made clear; nothing is redrawn` });
     rows.push({ label: 'Clean up', value: CLEANUPS.find((x) => x.value === o.cleanup)?.label ?? 'Light' });
@@ -427,7 +438,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     if (r.size) rows.push({ label: 'Result', value: `${o.format.toUpperCase()}, transparent, ${r.size[0]} × ${r.size[1]} px` });
     return rows;
   }
-  if (tracedOnly(o.type)) {
+  if (tracedOnly(o)) {
     rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     const t = r.traced?.tile;
     if (t) {

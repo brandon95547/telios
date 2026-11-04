@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, drawnByModel, findStyle, styleChoices, styleFits, tracedOnly, cutoutOnly, workerOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, OUTPUT_TYPES, PICTURE_LED_TYPES, QUALITIES, CLEANUPS, RATIOS, TARGETS, TRACE_TARGETS, REMIX_TARGET, drawnByModel, findStyle, styleChoices, styleFits, tracedOnly, cutoutOnly, workerOnly, typeInfo, wantsStyleReference, type OutputType, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
@@ -28,22 +28,24 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
   batchAll: boolean; setBatchAll: (v: boolean) => void; subfolders: boolean; setSubfolders: (v: boolean) => void;
 }) {
   const type = typeInfo(options.type);
-  const byModel = drawnByModel(options.type);
-  const traced = tracedOnly(options.type);
-  const cutout = cutoutOnly(options.type);
-  const worker = workerOnly(options.type);   // the worker does it all: no redraw, no theme, one version
+  const byModel = drawnByModel(options);
+  const traced = tracedOnly(options);
+  const cutout = cutoutOnly(options);
+  const worker = workerOnly(options);   // the worker does it all: no redraw, no theme, one version
   // what is redrawn by ComfyUI (the rest is drawn by a model or only traced or cut out)
   const redraw = !byModel && !worker;
   const pictureLed = PICTURE_LED_TYPES.includes(options.type);
+  const isTrace = options.type === 'trace';   // a trace's targets include Remix, which a model draws
   const chooseType = (t: OutputType) => {
+    const next = { type: t, madeFor: t === 'vector' ? (options.type === 'vector' ? options.madeFor : 'auto') : t === 'trace' ? 'object' : 'auto' } as const;
     set('type', t);
     if (options.style && !styleFits(t, options.style)) set('style', '');
     if (!PICTURE_LED_TYPES.includes(t)) set('rotateStyles', false);
-    if (drawnByModel(t) || workerOnly(t)) set('theme', '');
-    if (workerOnly(t)) set('variations', 1);
-    if (cutoutOnly(t)) { set('background', 'transparent'); set('format', 'webp'); }
-    else if (cutoutOnly(options.type) && options.format !== 'png') set('format', 'png');
-    set('madeFor', drawnByModel(t) ? options.madeFor : tracedOnly(t) ? 'object' : 'auto');
+    if (drawnByModel(next) || workerOnly(next)) set('theme', '');
+    if (workerOnly(next)) set('variations', 1);
+    if (cutoutOnly(next)) { set('background', 'transparent'); set('format', 'webp'); }
+    else if (cutoutOnly(options) && options.format !== 'png') set('format', 'png');
+    set('madeFor', next.madeFor);
     if (!PICTURE_LED_TYPES.includes(t)) {
       set('whole', false);
       if (options.background === 'original') set('background', 'transparent');   // a flat SVG has no ground to keep
@@ -70,7 +72,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               : <>Drawn as new vector art by {health ? `${health.model.label} ${health.model.name}` : 'the model'}, not by ComfyUI: a few minutes and a few cents a picture, in a few renders it checks itself. It reads what each picture is (a frame, a border, a corner, an ornament) and how it is colored. The SVG has one layer per color{' '}and, for a frame or border, the data that fits it to any page.</>}
           </div>
         )}
-        {traced && (
+        {isTrace && (
           <label className="field">
             <div className="label">Made for</div>
             <select value={options.madeFor} onChange={(e) => {
@@ -79,9 +81,9 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
               // a border's or a pattern's own background is taken out unless Keep original is chosen again
               if ((v === 'border' || v === 'pattern') && options.background === 'original') set('background', 'transparent');
             }}>
-              {TRACE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {[...TRACE_TARGETS, REMIX_TARGET].map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <div className="sub">{TRACE_TARGETS.find((t) => t.value === options.madeFor)?.hint} A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</div>
+            <div className="sub">{[...TRACE_TARGETS, REMIX_TARGET].find((t) => t.value === options.madeFor)?.hint}{traced ? <> A trace cannot be a frame or a corner (an app fits those to a page by data a trace does not have). Its app package says what it is made for.{options.madeFor === 'pattern' ? ' For a pattern tile the scan is straightened, its repeat across and down found, and one seamless tile cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : options.madeFor === 'border' ? ' For a border the strip is turned to run level, straightened, its repeat along its length found, and one seamless unit cut from it and traced, with no AI. It has at most three colors, and the color behind its design is taken out (Background → Keep original keeps it).' : ''} A picture that does not repeat is refused.</> : ' Each version is a new drawing that a model makes, so it costs what a flat SVG does.'}</div>
           </label>
         )}
         {(cutout || (traced && options.madeFor === 'object')) && (
@@ -93,7 +95,7 @@ export function OptionsPanel({ options, set, health, batchAll, setBatchAll, subf
             <div className="sub">{CLEANUPS.find((c) => c.value === options.cleanup)?.hint} {!cutout && 'A repeating border or tile is already cleaned by averaging every copy of its repeat.'}</div>
           </label>
         )}
-        {byModel && (
+        {byModel && options.type === 'vector' && (
           <label className="field">
             <div className="label">Made for</div>
             <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>

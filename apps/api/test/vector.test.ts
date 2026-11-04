@@ -29,7 +29,7 @@ test('Flat SVG is one of three types, with illustration and trace, and the types
   assert.deepEqual(OUTPUT_TYPES.map((t) => t.label), ['Illustration', 'Trace', 'Cutout', 'Flat SVG']);
   assert.equal(typeInfo('vector').label, 'Flat SVG');
   assert.ok(typeInfo('vector').vector);
-  assert.deepEqual(OUTPUT_TYPES.filter((t) => drawnByModel(t.value)).map((t) => t.value), ['vector']);
+  assert.deepEqual(OUTPUT_TYPES.filter((t) => drawnByModel({ type: t.value as any })).map((t) => t.value), ['vector']);
   // a result made under a type that is gone is still told by its old name, and its SVG kept
   assert.deepEqual([typeInfo('clipart').label, typeInfo('clipart').vector], ['Clip art', true]);
   assert.deepEqual([typeInfo('lineart').label, typeInfo('lineart').vector], ['Line art', true]);
@@ -320,4 +320,20 @@ test('a result with no fitting data says so', async () => {
     assert.equal((await fetch(`${base}/results/xvec8/download?format=layout`)).status, 404);
   });
   removeResult('xvec8');
+});
+
+test('Remix is a trace target that a model draws: several versions, no theme, no kept ground, and the model is told to make a new piece', async () => {
+  const { cleanOptions, drawnByModel, tracedOnly, workerOnly, settingRows, REMIX_BRIEF } = await import('@telios/shared');
+  const o = cleanOptions({ type: 'trace', madeFor: 'remix', variations: 3, theme: 'celtic', background: 'original' });
+  assert.equal(o.type, 'trace');
+  assert.equal(o.madeFor, 'remix');
+  assert.equal(o.variations, 3);
+  assert.equal(o.theme, '');
+  assert.equal(o.background, 'transparent');
+  assert.ok(drawnByModel(o) && !tracedOnly(o) && !workerOnly(o));
+  assert.ok(workerOnly(cleanOptions({ type: 'trace', madeFor: 'object' })), 'the other trace targets stay with the worker');
+  assert.equal(cleanOptions({ type: 'vector', madeFor: 'remix' }).madeFor, 'auto', 'only a trace has Remix');
+  assert.match(REMIX_BRIEF, /not a copy/);
+  const rows = Object.fromEntries(settingRows({ options: o, settings: undefined, seed: 1, size: [10, 10], drawing: undefined } as any).map((x: any) => [x.label, x.value]));
+  assert.equal(rows['Made as'], 'Inspired by (Remix)');
 });

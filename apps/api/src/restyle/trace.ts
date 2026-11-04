@@ -89,7 +89,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     const svg = fs.readFileSync(path.join(scratch, 'layered.svg'));
     fs.writeFileSync(path.join(dir, 'result.svg'), svg);
     // what the app package is made from (restyle/package.ts): there is no reading, so what it is made for decides its kind
-    const kind = kindFor(o.madeFor, 'other');
+    const kind = kindFor(o.madeFor === 'remix' ? 'auto' : o.madeFor, 'other');
     const t = tiled ? (traced as Tiled) : null;
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
       kind, rendering: 'flat', colorMode: 'full',
