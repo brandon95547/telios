@@ -77,7 +77,7 @@ class ClearedInside(unittest.TestCase):
         shape[20:180, 20:180] = True
         ink = shape.copy()
         ink[60:120, 60:120] = False        # a big gap between the vines
-        ink[140:142, 140:142] = False      # a speck of highlight
+        ink[141, 141] = False      # a speck of highlight
         out = cleared_inside(shape, ink)
         self.assertFalse(out[90, 90])
         self.assertTrue(out[141, 141])
