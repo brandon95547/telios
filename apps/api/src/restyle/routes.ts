@@ -9,7 +9,7 @@ import path from 'node:path';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, cleanOptions, drawnByModel, hasPackage, rotatedStyle, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, cleanOptions, drawnByModel, hasPackage, mainFile, rotatedStyle, findStyle, findTheme, typeInfo, type OutputFormat, type RestyleInput, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { designDir, getDesign } from '../store.ts';
@@ -205,7 +205,8 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
   router.get('/results/:id/download', wrap(async (req, res) => {
     const r = getResult(String(req.params.id));
     if (!r?.files) return res.status(404).json({ error: 'No such picture.' });
-    const want = String(req.query.format ?? r.options.format);
+    // no format asked for: the one file this kind of result is taken as (its SVG or app package, its cutout, its picture)
+    const want = String(req.query.format ?? mainFile(r).format);
     const name = resultName(r);
     if (want === 'layout') {
       if (!r.files.layout) return res.status(404).json({ error: 'This one has no fitting data.' });
@@ -267,12 +268,15 @@ export function restyleRoutes(toWorker: (m: ToWorker) => void) {
       for (const r of chosen) {
         const dir = req.body?.subfolders ? `${resultFolder(r)}/` : '';
         const base = `${dir}${resultName(r)}`;
-        const src = path.join(work, `${r.id}.${EXT[r.options.format]}`);
-        fs.writeFileSync(src, await inFormat(path.join(resultDir(r.id), 'result.png'), r.options.format, r.options.background));
-        manifest.push({ src, name: unique(`${base}.${EXT[r.options.format]}`) });
-        if (r.files!.svg) manifest.push({ src: path.join(resultDir(r.id), 'result.svg'), name: unique(`${base}.svg`) });
-        if (r.files!.layout) manifest.push({ src: path.join(resultDir(r.id), 'layout.json'), name: unique(`${base}.layout.json`) });
-        if (hasPackage(r)) manifest.push(...await writePackage(r, base, path.join(work, `${r.id}-package`), folderFor(`${base}-package`)));
+        // one file for each: what the result is taken as (mainFile), never its preview or its parts beside it
+        const main = mainFile(r).format;
+        if (main === 'package') manifest.push(...await writePackage(r, base, path.join(work, `${r.id}-package`), folderFor(`${base}-package`)));
+        else if (main === 'svg') manifest.push({ src: path.join(resultDir(r.id), 'result.svg'), name: unique(`${base}.svg`) });
+        else {
+          const src = path.join(work, `${r.id}.${EXT[main]}`);
+          fs.writeFileSync(src, await inFormat(path.join(resultDir(r.id), 'result.png'), main, r.options.background));
+          manifest.push({ src, name: unique(`${base}.${EXT[main]}`) });
+        }
       }
       fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(manifest));
       await python(['pack', path.join(work, 'manifest.json'), path.join(ZIPS, `${token}.zip`)], 15 * 60_000);

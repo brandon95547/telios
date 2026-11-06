@@ -341,3 +341,21 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .prompt-dialog-head h3 { margin: 0; font-size: 15px; }
 .prompt-text { margin: 12px 0; padding: 12px 14px; overflow: auto; background: #f4f5f4; border-radius: 8px; font: 13.5px/1.55 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .prompt-dialog-foot { display: flex; align-items: center; gap: 10px; }
+
+/* What do you want? — the goal cards */
+.goals { display: grid; gap: 14px; }
+.goal-group-title { font: 600 12.5px/1.2 var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--soft); margin: 0 0 6px; }
+.goal { display: grid; gap: 4px; width: 100%; text-align: left; padding: 10px 12px; margin: 0 0 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); cursor: pointer; }
+.goal:hover { border-color: var(--deep-2); }
+.goal.on { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f1f6f5; }
+.goal b { font-size: 14px; }
+.goal-line { font-size: 13px; color: var(--soft); }
+.goal-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.goal-badges i { font-style: normal; font-size: 13px; padding: 1px 8px; border-radius: 99px; background: #e9eeec; color: var(--deep); }
+.goal-badges i.free { background: #dff0e6; }
+.goal-badges i.paid { background: #f6ead2; color: #6b4a07; }
+.more { margin-top: 12px; }
+.more summary { cursor: pointer; font-size: 13.5px; color: var(--deep-2); }
+.download-one { display: inline-flex; align-items: center; gap: 8px; }
+.small-link { font-size: 13px; }
+.small-check { margin: 0; }

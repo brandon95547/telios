@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, hasPackage, workerOnly, findStyle, findTheme, typeInfo, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
+import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, madeAs, workerOnly, findStyle, findTheme, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
-import { DownloadMenu } from './DownloadMenu.tsx';
+import { Download } from './Download.tsx';
 import { folderToSave, saveResults } from './approve.ts';
 import { Carousel } from './Carousel.tsx';
 import { BatchProgress, TileProgress } from './Progress.tsx';
@@ -12,12 +12,12 @@ import { Viewer } from './Viewer.tsx';
 
 // What this browser last chose: a convenience, so it may be missing (a private window).
 const SAVED = 'telios.restyle';
-function saved(): { options: RestyleOptions; batchAll: boolean; subfolders: boolean } {
+function saved(): { options: RestyleOptions; subfolders: boolean } {
   try {
     const s = JSON.parse(localStorage.getItem(SAVED) ?? '{}');
-    return { options: cleanOptions({ ...DEFAULT_OPTIONS, ...s.options }), batchAll: s.batchAll ?? true, subfolders: s.subfolders ?? true };
+    return { options: cleanOptions({ ...DEFAULT_OPTIONS, ...s.options }), subfolders: s.subfolders ?? true };
   } catch {
-    return { options: cleanOptions(DEFAULT_OPTIONS), batchAll: true, subfolders: true };
+    return { options: cleanOptions(DEFAULT_OPTIONS), subfolders: true };
   }
 }
 
@@ -45,7 +45,6 @@ const INPUTS_PER_PAGE = 5;
 export function Studio({ health }: { health: Health | null }) {
   const first = useMemo(saved, []);
   const [options, setOptions] = useState(first.options);
-  const [batchAll, setBatchAll] = useState(first.batchAll);
   const [subfolders, setSubfolders] = useState(first.subfolders);
   const [inputs, setInputs] = useState<RestyleInput[]>([]);
   const [results, setResults] = useState<RestyleResult[]>([]);
@@ -62,8 +61,8 @@ export function Studio({ health }: { health: Health | null }) {
   const [skew, setSkew] = useState(0);   // how far the server's clock is ahead of this page's, for the progress bars
 
   useEffect(() => {
-    try { localStorage.setItem(SAVED, JSON.stringify({ options, batchAll, subfolders })); } catch { /* not kept */ }
-  }, [options, batchAll, subfolders]);
+    try { localStorage.setItem(SAVED, JSON.stringify({ options, subfolders })); } catch { /* not kept */ }
+  }, [options, subfolders]);
   const set = useCallback(<K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => setOptions((o) => ({ ...o, [key]: value })), []);
 
   const load = useCallback(async () => {
@@ -127,7 +126,9 @@ export function Studio({ health }: { health: Health | null }) {
   };
 
   const ready = inputs.filter((i) => i.status === 'ready');
-  const toDraw = batchAll ? ready : ready.filter((i) => pickedInputs.has(i.id));
+  // the ticked pictures, or all of them when none is ticked
+  const picked = ready.filter((i) => pickedInputs.has(i.id));
+  const toDraw = picked.length ? picked : ready;
   const count = toDraw.length * options.variations;
   const start = () => act(async () => {
     await restyle.start(toDraw.map((i) => i.id), options);
@@ -149,7 +150,7 @@ export function Studio({ health }: { health: Health | null }) {
     const n = kept.size;
     if (confirm(`Delete ${n} picture${n === 1 ? '' : 's'}? Their files are removed for good.`)) act(() => restyle.deleteResults([...kept]));
   };
-  // Approve: the ticked pictures are saved into the For Talari folder (chosen once, in the browser), then taken out of the results
+  // Approve: the ticked pictures are saved into the Book App folder (chosen once, in the browser), then taken out of the results
   const approve = () => act(async () => {
     const folder = await folderToSave();
     if (!folder) return;
@@ -180,16 +181,15 @@ export function Studio({ health }: { health: Health | null }) {
       onDrop={(e) => { e.preventDefault(); setOver(false); upload([...e.dataTransfer.files], null); }}>
       <aside className="options">
         <AddImages onFiles={upload} onDesigns={(ids) => act(() => restyle.fromDesigns(ids))} busy={uploading !== null} />
-        <OptionsPanel options={options} set={set} health={health} batchAll={batchAll} setBatchAll={setBatchAll} subfolders={subfolders} setSubfolders={setSubfolders} />
+        <OptionsPanel options={options} set={set} health={health} />
         <div className="start">
           <button type="button" className="primary big" disabled={!count || working || !!notReady} onClick={start}>
-            ▶ Start processing ({count})
+            Make {count} {count === 1 ? 'picture' : 'pictures'}
           </button>
           <div className="sub">
             {notReady ? notReady
               : !ready.length ? 'Add pictures first.'
-              : !count ? 'Tick the pictures to redraw, or turn on Process every picture.'
-              : `${toDraw.length} picture${toDraw.length === 1 ? '' : 's'} × ${options.variations} version${options.variations === 1 ? '' : 's'}, ${byModel || traced ? 'two at a time' : 'one at a time'}.`}
+              : `${picked.length ? 'The ticked pictures' : 'Every picture'}: ${toDraw.length} × ${options.variations} version${options.variations === 1 ? '' : 's'}, ${byModel || traced ? 'two at a time' : 'one at a time'}. Tick pictures to make only those.`}
           </div>
         </div>
       </aside>
@@ -205,7 +205,7 @@ export function Studio({ health }: { health: Health | null }) {
             <input type="file" multiple accept={ACCEPT} hidden onChange={(e) => { upload([...(e.target.files ?? [])], null); e.target.value = ''; }} />
             <div className="drop-title">Drop pictures, a folder or a zip to get started</div>
             <div className="drop-hint">Clip art, frames, borders, ornaments, icons, anything · PNG, JPEG, WebP, TIFF, SVG, EPS or PDF pages</div>
-            <div className="drop-hint">Then choose how they are redrawn: ComfyUI draws illustrations in Talari's styles and themes; the worker traces a picture into flat colors; a model draws a flat SVG.</div>
+            <div className="drop-hint">Then choose what you want: a vector copy, a cutout, a pattern tile or border, something new inspired by it, or a redraw in an art style.</div>
           </label>
         ) : (
           <section className="block">
@@ -247,12 +247,13 @@ export function Studio({ health }: { health: Health | null }) {
               <span className="spacer" />
               {running.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.stop(running.map((r) => r.id)))}>Stop the rest</button>}
               {failed.length > 0 && <button type="button" className="small" disabled={working} onClick={() => act(() => restyle.retry(again.map((r) => r.id)))}>{tickedFailed.length ? 'Try ticked again' : 'Try stopped & failed again'} ({again.length})</button>}
-              <button type="button" className="small" disabled={!keptDone.length || working} onClick={approve} title="Saves the ticked pictures into your For Talari folder (you choose it the first time), then takes them out of the results">Approve ticked ({keptDone.length})</button>
               <button type="button" className="small" disabled={!kept.size || working} onClick={removeResults}>Delete ticked ({kept.size})</button>
-              <button type="button" className="small primary" disabled={!keptDone.length || working} onClick={download}>Download ticked ({keptDone.length})</button>
+              <label className="check small-check" title="By what each was made as, then the folders they came in"><input type="checkbox" checked={subfolders} onChange={(e) => setSubfolders(e.target.checked)} /> Subfolders</label>
+              <button type="button" className="small" disabled={!keptDone.length || working} onClick={download} title="One zip of the ticked pictures, to take somewhere else">Download as zip ({keptDone.length})</button>
+              <button type="button" className="small primary" disabled={!keptDone.length || working} onClick={approve} title="Saves the ticked pictures into your Book App folder (you choose it the first time), then takes them out of these results">Send to Book App ({keptDone.length})</button>
             </div>
             <BatchProgress results={results} skew={skew} />
-            <p className="sub">Tick the ones to keep, then download them; or tick the ones to delete. Space in the large view ticks one.</p>
+            <p className="sub">Tick the ones you want, then send them to the Book App (this removes them from here), or download them as a zip. Space in the large view ticks one.</p>
             <div className="tiles results">
               {results.map((r) => {
                 const at = viewable.indexOf(r);
@@ -266,15 +267,13 @@ export function Studio({ health }: { health: Health | null }) {
                         : <span className="tile-error">{r.status === 'canceled' ? 'Stopped' : r.error}</span>}
                     </button>
                     <div className="tile-name">{r.inputName}{r.options.variations > 1 ? ` · v${r.variation}` : ''}</div>
-                    <div className="tile-meta">{[typeInfo(r.options.type).label, findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean).join(' · ')}</div>
+                    <div className="tile-meta">{[madeAs(r.options), findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean).join(' · ')}</div>
                     {r.drawing?.appReady && <div className={`tile-ready ${r.drawing.appReady.ok ? 'pass' : 'fail'}`} title={r.drawing.appReady.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join('\n')}>{r.drawing.appReady.ok ? '✓ App-ready' : `✗ Not app-ready (${r.drawing.appReady.checks.filter((c) => !c.ok).length})`}</div>}
                     {r.warning && <div className="tile-warn" title={r.warning}>{r.warning}</div>}
                     {r.files && (
                       <div className="tile-actions">
                         <button type="button" className="small" onClick={() => setViewing(at)}>View</button>
-                        {hasPackage(r)
-                          ? <DownloadMenu id={r.id} name={r.inputName} />
-                          : <a className="button small" href={restyle.downloadOne(r.id, drawnByModel(r.options) ? 'svg' : undefined)} download aria-label={`Download ${r.inputName}`}>⤓</a>}
+                        <Download r={r} compact />
                       </div>
                     )}
                   </div>

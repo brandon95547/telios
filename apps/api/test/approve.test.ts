@@ -18,12 +18,24 @@ function folder() {
 const result = (id: string, o: object = {}) => ({ id, inputName: `input-${id}`, options: { type: 'illustration', format: 'webp' }, files: { png: 'x' }, ...o }) as any;
 const answer = (body: string, disposition: string | null, ok = true) => ({ ok, status: ok ? 200 : 404, headers: { get: () => disposition }, json: async () => ({ error: 'This one has no SVG.' }), blob: async () => new Blob([body]) });
 
-test('what is saved of a result: the package of a flat SVG, the SVG of a result made as clip art, the picture of the rest', () => {
-  assert.match(fileOf(result('a', { drawing: { kind: 'frame' }, files: { png: 'x', svg: 'x' } })), /\/results\/a\/download\?format=package$/);
-  assert.match(fileOf(result('t', { options: { type: 'trace', format: 'png' }, traced: { colors: ['#000000'] }, files: { png: 'x', svg: 'x' } })), /\/results\/t\/download\?format=package$/, 'a trace has a package too');
-  assert.match(fileOf(result('b', { options: { type: 'clipart', format: 'png' }, files: { svg: 'x' } })), /\/results\/b\/download\?format=svg$/);
-  assert.match(fileOf(result('c', { options: { type: 'lineart', format: 'png' }, files: { png: 'x' } })), /\/results\/c\/download$/, 'no SVG to take: the picture');
-  assert.match(fileOf(result('d')), /\/results\/d\/download$/);
+test('what is saved of a result is what the server answers with when no format is asked for: the one file that kind of result is taken as', () => {
+  assert.match(fileOf(result('a')), /\/results\/a\/download$/);
+});
+
+test('each kind of result has one main file, and at most one other form beside it', async () => {
+  const { mainFile, GOALS, goalOf, madeAs } = await import('@telios/shared');
+  const svg = { svg: 'x' };
+  assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'object', format: 'png' }, files: svg }), { format: 'svg' });
+  assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'remix', format: 'png' }, files: svg }), { format: 'svg' });
+  assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'border', format: 'png' }, files: { ...svg, layout: 'x' } }), { format: 'package', also: 'svg' });
+  assert.deepEqual(mainFile({ options: { type: 'vector', madeFor: 'frame', format: 'png' }, files: { ...svg, layout: 'x' } }), { format: 'package', also: 'svg' });
+  assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp', also: 'png' });
+  assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'png' }, files: {} }), { format: 'png', also: 'webp' });
+  assert.deepEqual(mainFile({ options: { type: 'illustration', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp' });
+  assert.equal(GOALS.length, 7);
+  assert.equal(goalOf({ type: 'trace', madeFor: 'remix' })!.id, 'remix');
+  assert.equal(goalOf({ type: 'trace', madeFor: 'pattern' })!.id, 'tile');
+  assert.equal(madeAs({ type: 'clipart' }), 'Clip art');
 });
 
 test('the name the server gave a download is the name it is saved under', () => {

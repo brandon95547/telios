@@ -4,13 +4,14 @@
 // asked for again only if the browser has forgotten that it may write there. Chrome, Edge and the apps built
 // on them have it; Safari and Firefox do not.
 //
-//   a flat SVG, a trace  its app package (a zip: the SVG, its fitting data, the fit sheet), which Talari's importer takes as it is
-//   an old clip art, line art  the SVG (those types are gone, their results are kept)
-//   anything else     the picture, in the format chosen
+//   what each result is taken as (mainFile in the shared package, which the server answers with when no format is asked for):
+//   a vector with fitting data (frame, border, corner, tile)  its app package, which Talari's importer takes as it is
+//   any other vector  its SVG
+//   a cutout, an illustration  the picture, in the format chosen
 //
 // A file that is already in the folder is never overwritten: the new one is named "name (2)".
 
-import { hasPackage, typeInfo, type RestyleResult } from '@telios/shared';
+import type { RestyleResult } from '@telios/shared';
 import { restyle } from '../api.ts';
 
 /** The part of a browser's directory handle that is used here. */
@@ -94,7 +95,7 @@ export async function folderToSave(): Promise<Folder | null> {
 }
 
 /** What is saved of a result, and from where. */
-export const fileOf = (r: RestyleResult) => restyle.downloadOne(r.id, hasPackage(r) ? 'package' : typeInfo(r.options.type).vector && r.files?.svg ? 'svg' : undefined);
+export const fileOf = (r: RestyleResult) => restyle.downloadOne(r.id);
 
 /** A name the browser's folder access will take: it refuses a path mark, a control character (a picture's name that came
  * out of a zip with its emoji misread carries C1 ones, which show as nothing), an invisible space, and a name that starts

@@ -69,6 +69,47 @@ export const workerOnly = (o: { type: OutputType; madeFor?: string }) => tracedO
  * along its length). Not a frame or a corner: an app fits those to a page by data a trace does not have. */
 export const TRACE_TARGETS = TARGETS.filter((t) => t.value === 'object' || t.value === 'pattern' || t.value === 'border');
 
+/** What a person asks for, in their words. Each goal is one way of using the tool, and says what it gives, how long it takes and what it costs;
+ * the type and "made for" it sets are how the tool does it. The Choose step lists these, not the types. */
+export interface Goal {
+  id: string;
+  group: 'copy' | 'new';
+  label: string;
+  line: string;
+  /** The one file it gives. */
+  gives: string;
+  speed: string;
+  cost: string;
+  type: OutputType;
+  madeFor: Target | typeof REMIX;
+}
+export const GOAL_GROUPS = { copy: 'Copy what is there', new: 'Make something new' } as const;
+export const GOALS: Goal[] = [
+  { id: 'vector', group: 'copy', label: 'Same picture as vector', line: 'The picture itself traced into flat colors. Its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
+  { id: 'cutout', group: 'copy', label: 'Cut out the object', line: 'A one-ink object lifted off its plain background, set level and cleaned up.', gives: 'Transparent WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
+  { id: 'tile', group: 'copy', label: 'Seamless pattern tile', line: 'One exact repeat of a pattern, ready to tile across and down.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'pattern' },
+  { id: 'border', group: 'copy', label: 'Border strip', line: 'One exact repeat of a border, ready to run to any length.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'border' },
+  { id: 'remix', group: 'new', label: 'New vector inspired by it', line: 'A new drawing with the same subject, style and colors but its own shapes: a batch of butterflies comes back as new butterflies.', gives: 'SVG', speed: 'Minutes', cost: 'A few cents each', type: 'trace', madeFor: REMIX },
+  { id: 'flat', group: 'new', label: 'New flat art for a frame, border, corner or ornament', line: 'New vector art made to fit a page, with the data that stretches it to any size.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
+  { id: 'illustration', group: 'new', label: 'Redraw in an art style', line: 'The picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
+];
+/** The goal a result or the chosen options come from; a result made before the types were dropped has none. */
+export const goalOf = (o: { type: OutputType | string; madeFor?: string }): Goal | undefined => GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor : true));
+/** A short name for what a result was made as, for its tile. */
+export const madeAs = (o: { type: OutputType | string; madeFor?: string }) => goalOf(o)?.label ?? typeInfo(o.type).label;
+
+/** The one file a result is taken as, and the one other form worth a small link beside it. A vector comes as its SVG (as the app package where it has
+ * fitting data: a frame, border, corner or tile); a cutout as WebP (or PNG); an illustration as the format it was made in. A vector's preview
+ * picture is only for looking at, so it is never a download. */
+export type MainFormat = 'package' | 'svg' | OutputFormat;
+export function mainFile(r: { options: Pick<RestyleOptions, 'type' | 'madeFor' | 'format'>; files?: { svg?: string; layout?: string } | null }): { format: MainFormat; also?: MainFormat } {
+  const o = r.options;
+  if (cutoutOnly(o)) return { format: o.format, also: o.format === 'webp' ? 'png' : 'webp' };
+  if (r.files?.svg) return r.files.layout ? { format: 'package', also: 'svg' } : { format: 'svg' };
+  return { format: o.format };
+}
+export const FORMAT_LABEL: Record<MainFormat, string> = { package: 'App package', svg: 'SVG', png: 'PNG', webp: 'WebP', jpeg: 'JPEG' };
+
 /** Whether a result can be taken as an app package (the SVG with its manifest): a flat SVG, or a trace. */
 export const hasPackage = (r: Pick<RestyleResult, 'drawing' | 'traced' | 'files'>) => !!(r.files?.svg && (r.drawing || r.traced));
 
@@ -393,8 +434,9 @@ export function cleanOptions(raw: any): RestyleOptions {
     : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX], 'object') : 'auto';
   // a trace and a cutout are the same every time: one version (a remix is a new drawing each time, so it may have several)
   if (workerOnly(o)) o.variations = 1;
-  // a remix is drawn by a model, which has no theme and may keep no ground
-  if (o.madeFor === REMIX) { o.theme = ''; if (o.background === 'original') o.background = 'transparent'; }
+  // a remix is drawn by a model, which has no theme; a vector (flat SVG or remix) is shown on a checkerboard and has no background to choose
+  if (o.madeFor === REMIX) o.theme = '';
+  if (drawnByModel(o)) o.background = 'transparent';
   return o;
 }
 
