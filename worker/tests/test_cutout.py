@@ -66,3 +66,14 @@ class Cutout(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PureBlackAndWhite(unittest.TestCase):
+    def test_a_picture_of_only_black_and_white_is_cut_out(self):
+        # the darkest 4% is exactly black, so a strict "darker than" picked no ink color at all (NaN)
+        a = np.full((100, 100), 255, np.uint8)
+        a[20:80, 45:55] = 0
+        a[45:55, 20:80] = 0
+        info, rgba = run(a)
+        self.assertEqual(info['ink'], '#000000')
+        self.assertEqual(rgba[0, 0, 3], 0)

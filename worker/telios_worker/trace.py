@@ -137,10 +137,29 @@ def smoothed(band, shape, k, sigma):
     return out
 
 
+def single_ink(rgba):
+    """Whether the picture is one ink on a plain paper (an engraving, a stamp, a silhouette): nearly all of its ink is one solid color, with
+    only the soft edge between it and the paper. Its paper then stays clear wherever it shows, between the lines too, not only round the outside."""
+    paper, ink = find_paper(rgba)
+    if paper['kind'] != 'paper' or ink.mean() < 0.005:
+        return False
+    labs = lab(rgba[..., :3].astype(np.float64))
+    d = np.linalg.norm(labs - np.median(labs[~ndimage.binary_dilation(ink, iterations=3)], 0), axis=-1)[ink]
+    core = d > 0.75 * np.percentile(d, 95)
+    if core.mean() < 0.7:
+        return False   # shaded: many mid-tones, not one flat ink
+    pts = labs[ink][core]
+    return bool(pts.std(axis=0).max() < 15)
+
+
 def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0):
     im, k, (w0, h0) = prepare(source)
     rgba = np.asarray(im).astype(np.float64)
     h, w = rgba.shape[:2]
+    if color_mode == 'auto':
+        color_mode = 'one-ink' if not keep_background and single_ink(np.asarray(im)) else 'full'
+        if color_mode == 'one-ink':
+            max_colors = 1
     rgb = ndimage.gaussian_filter(rgba[..., :3], (0.8, 0.8, 0))
     shape, window, paper = segment(np.asarray(im), color_mode, keep_background, 12 * k * k)
     labs = lab(rgb)

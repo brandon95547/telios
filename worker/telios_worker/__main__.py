@@ -77,7 +77,7 @@ def main(argv=None):
     t.add_argument('source')
     t.add_argument('outdir')
     t.add_argument('--palette', help='JSON list of {hex, name}')
-    t.add_argument('--mode', default='full', choices=['full', 'neutral', 'one-ink'])
+    t.add_argument('--mode', default='full', choices=['full', 'neutral', 'one-ink', 'auto'])
     t.add_argument('--keep-background', action='store_true')
     t.add_argument('--max-colors', type=int, default=8)
     t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')

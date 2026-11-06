@@ -57,8 +57,10 @@ def cutout(source, outdir, cleanup=1, straighten=True):
     dark = bool(np.median(edge) >= np.median(gray) - 1e-9 and np.median(edge) > 127)
     ink = ink_of(gray, dark)
     alpha = smoothstep(ink, 0.10, 0.70)
-    pick = gray < np.percentile(gray, 4) if dark else gray > np.percentile(gray, 96)
-    color = rgb[pick].mean(axis=0) * (0.6 if dark else 1.0)
+    # the ink's color: where it is solid (a pure black-and-white picture has solid ink and no soft edge to pick from by rank)
+    solid = alpha > 0.9
+    pick = solid if solid.any() else (gray <= np.percentile(gray, 4) if dark else gray >= np.percentile(gray, 96))
+    color = rgb[pick].mean(axis=0) * (0.35 if dark else 1.0)
 
     tilt = tilt_of(alpha) if straighten else 0.0
     if tilt:

@@ -55,3 +55,16 @@ class CleanUp(unittest.TestCase):
         out = smoothed(band, shape, 2, 1.5)
         self.assertTrue((out[~shape] == 0).all())
         self.assertTrue((out[8:12, 8:12] == 1).all())
+
+
+class SingleInk(unittest.TestCase):
+    def test_black_lines_on_white_are_one_ink_and_colored_art_is_not(self):
+        from telios_worker.trace import single_ink
+        a = np.full((200, 200, 3), 255, np.uint8)
+        a[40:160, 60:70] = 5
+        a[40:50, 60:140] = 5
+        self.assertTrue(single_ink(np.dstack([a, np.full((200, 200), 255, np.uint8)])))
+        b = a.copy()
+        b[100:150, 100:150] = (200, 40, 40)
+        b[60:90, 110:140] = (40, 80, 200)
+        self.assertFalse(single_ink(np.dstack([b, np.full((200, 200), 255, np.uint8)])))
