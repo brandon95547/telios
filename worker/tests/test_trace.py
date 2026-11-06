@@ -68,3 +68,17 @@ class SingleInk(unittest.TestCase):
         b[100:150, 100:150] = (200, 40, 40)
         b[60:90, 110:140] = (40, 80, 200)
         self.assertFalse(single_ink(np.dstack([b, np.full((200, 200), 255, np.uint8)])))
+
+
+class ClearedInside(unittest.TestCase):
+    def test_a_large_gap_of_paper_inside_the_design_is_cleared_and_a_small_one_stays(self):
+        from telios_worker.trace import cleared_inside
+        shape = np.zeros((200, 200), bool)
+        shape[20:180, 20:180] = True
+        ink = shape.copy()
+        ink[60:120, 60:120] = False        # a big gap between the vines
+        ink[140:142, 140:142] = False      # a speck of highlight
+        out = cleared_inside(shape, ink)
+        self.assertFalse(out[90, 90])
+        self.assertTrue(out[141, 141])
+        self.assertTrue(out[30, 30])

@@ -46,7 +46,22 @@ def prepare(source):
     return im, k, (w0, h0)
 
 
-def segment(rgba, color_mode, keep_background=False, pinhole=12, wider=1.0):
+CLEAR_INSIDE_SHARE = 0.00004  # a stretch of paper inside the design this share of the picture or more is background, not a highlight
+
+
+def cleared_inside(shape, ink):
+    """The design's silhouette with its large stretches of paper left clear: color art on a plain ground has gaps between its vines and
+    leaves that the silhouette fills in as if they were part of it. Small ones (a highlight, an eye, a gap between two close lines) stay."""
+    inside, n = ndimage.label(shape & ~ink)
+    if not n:
+        return shape
+    sizes = ndimage.sum(np.ones_like(inside), inside, range(1, n + 1))
+    big = np.isin(inside, 1 + np.nonzero(sizes >= CLEAR_INSIDE_SHARE * shape.size)[0])
+    # the soft edge round a cleared stretch is paper tinted by its neighbors: it goes with it
+    return shape & ~ndimage.binary_dilation(big, iterations=2)
+
+
+def segment(rgba, color_mode, keep_background=False, pinhole=12, wider=1.0, clear_inside=False):
     """Where the design is, in an RGBA array: (shape, window, paper). One ink keeps the paper
     between its lines clear; color and shaded art are their whole silhouette, pale grounds and
     highlights included. A frame's window and stray marks are left out. `pinhole`: the area of
@@ -73,6 +88,8 @@ def segment(rgba, color_mode, keep_background=False, pinhole=12, wider=1.0):
         else:
             # color and shaded art: the whole design, its pale grounds and highlights included
             shape = silhouette(ink, window, wider)
+            if clear_inside:
+                shape = cleared_inside(shape, ink)
         shape = ndimage.binary_opening(shape, iterations=1)
     return shape, window, paper
 
@@ -152,7 +169,7 @@ def single_ink(rgba):
     return bool(pts.std(axis=0).max() < 15)
 
 
-def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0):
+def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0, clear_inside=False):
     im, k, (w0, h0) = prepare(source)
     rgba = np.asarray(im).astype(np.float64)
     h, w = rgba.shape[:2]
@@ -161,7 +178,7 @@ def trace(source, outdir, palette=None, color_mode='full', keep_background=False
         if color_mode == 'one-ink':
             max_colors = 1
     rgb = ndimage.gaussian_filter(rgba[..., :3], (0.8, 0.8, 0))
-    shape, window, paper = segment(np.asarray(im), color_mode, keep_background, 12 * k * k)
+    shape, window, paper = segment(np.asarray(im), color_mode, keep_background, 12 * k * k, clear_inside=clear_inside)
     labs = lab(rgb)
     pal, names = palette_for(rgb, labs, shape, palette, paper, keep_background, max_colors, merge)
 

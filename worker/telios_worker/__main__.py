@@ -3,7 +3,7 @@
   ingest    <original> <design-dir>                         prepare and measure an upload
   pdfpages  <pdf> <out-dir> [--max 10] [--dpi 300]          each page as a PNG
   vectorize <trace.png> <out-dir> --palette JSON [--width W --height H]
-  trace     <source.png> <out-dir> [--palette JSON] [--mode full|neutral|one-ink] [--keep-background]
+  trace     <source.png> <out-dir> [--palette JSON] [--mode full|neutral|one-ink] [--keep-background] [--clear-inside]
   rebuild   <crop.png> <out-dir> --reading JSON [--analysis analysis.json]
   unzip     <zip> <out-dir> [--max-files N] [--max-bytes B]    the pictures in a zip
   eps       <eps> <out.png> [--longest 2048]                    an EPS drawn as pixels
@@ -79,6 +79,7 @@ def main(argv=None):
     t.add_argument('--palette', help='JSON list of {hex, name}')
     t.add_argument('--mode', default='full', choices=['full', 'neutral', 'one-ink', 'auto'])
     t.add_argument('--keep-background', action='store_true')
+    t.add_argument('--clear-inside', action='store_true', help='a color picture\'s large stretches of paper inside the design are left clear')
     t.add_argument('--max-colors', type=int, default=8)
     t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')
     t.add_argument('--smooth', type=int, default=0, choices=[0, 1, 2], help='how far the colors\' outlines are evened out: off, light, strong')
@@ -155,7 +156,7 @@ def main(argv=None):
             from .trace import trace
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
-            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth))
+            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth, args.clear_inside))
         elif args.cmd == 'cutout':
             from .cutout import cutout
             os.makedirs(args.outdir, exist_ok=True)

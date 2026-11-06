@@ -221,11 +221,13 @@ export interface RestyleOptions {
   madeFor: Target | typeof REMIX;
   /** A trace made for an object: how far its edges are evened out. */
   cleanup: CleanUp;
+  /** A trace of color art on a plain ground leaves the large stretches of ground inside the design clear (between its vines and leaves), not filled. */
+  clearInside: boolean;
 }
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light',
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -430,6 +432,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
+  o.clearInside = raw?.clearInside !== false;
   o.madeFor = o.type === 'vector' ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
     : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX], 'object') : 'auto';
   // a trace and a cutout are the same every time: one version (a remix is a new drawing each time, so it may have several)
@@ -490,7 +493,10 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
       rows.push({ label: 'Straightened', value: Math.abs(t.tilt) < 0.1 ? 'it was level' : `turned ${Math.abs(t.tilt)}° ${t.tilt > 0 ? 'back' : 'the other way'} to level it` });
       rows.push({ label: 'Seam', value: t.seam <= TILE_SEAM_MAX ? 'none: the unit’s edges meet' : `visible (the colors change ${t.seam}× as much across the edge as inside it)` });
     }
-    if (o.madeFor === 'object') rows.push({ label: 'Clean up', value: CLEANUPS.find((c) => c.value === o.cleanup)?.label ?? 'Light' });
+    if (o.madeFor === 'object') {
+      rows.push({ label: 'Clean up', value: CLEANUPS.find((c) => c.value === o.cleanup)?.label ?? 'Light' });
+      rows.push({ label: 'Ground inside the design', value: o.clearInside ? 'large stretches cleared (between vines and leaves)' : 'kept, filled with the paper color' });
+    }
     rows.push({ label: 'Traced as', value: `the picture's own shapes in ${r.traced ? `${r.traced.colors.length} flat colors` : 'a few flat colors'}, one SVG layer each; nothing is redrawn` });
     rows.push({ label: 'Background', value: o.background === 'original' ? 'kept as in the original, a scan\'s margin included' : `${BACKGROUND_LABEL[o.background]}; a scan's margin is cleared` });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });

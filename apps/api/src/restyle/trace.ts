@@ -81,7 +81,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
       // an object keeps the picture's own ground only where that was asked for
       traced = tiled
         ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : []), ...(tiled && o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000)
-        : await python<Traced>(['trace', source, scratch, '--mode', 'auto', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), '--smooth', String(['off', 'light', 'strong'].indexOf(o.cleanup)), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
+        : await python<Traced>(['trace', source, scratch, '--mode', 'auto', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), '--smooth', String(['off', 'light', 'strong'].indexOf(o.cleanup)), ...(o.clearInside ? ['--clear-inside'] : []), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
     } catch (e) {
       throw new Error(plain(e));
     }

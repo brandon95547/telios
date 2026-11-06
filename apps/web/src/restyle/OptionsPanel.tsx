@@ -73,6 +73,8 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <div className="sub">{CLEANUPS.find((c) => c.value === options.cleanup)?.hint}</div>
           </label>
         )}
+        {traced && goal.id === 'vector' && <Toggle label="Clear the background inside the design" on={options.clearInside} onChange={(v) => set('clearInside', v)}
+          hint="On: the plain ground showing between the vines and leaves is made transparent. Off: it is kept, as for a white flower on a white page." />}
         {traced && <Toggle label="Keep the original background" on={keepGround} onChange={(v) => set('background', v ? 'original' : 'transparent')}
           hint={goal.id === 'vector' ? 'Off: a scan\u2019s paper margin is cleared and the design keeps its own ground.' : 'Off: the color behind the design is taken out, so an app can recolor it.'} />}
         {cutout && (
