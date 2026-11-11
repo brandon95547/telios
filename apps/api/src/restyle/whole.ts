@@ -6,8 +6,7 @@
 // the picture and writes that paragraph, and the redraw runs on it from nothing, on a taller canvas: no
 // extension of the picture, no inpaint. The figure that comes out is a new one, inspired by the picture.
 
-import { chat, imagePart, provider, textPart } from '../engine/llm.ts';
-import { forModel } from '../engine/render.ts';
+import { cleanAnswer, readPicture } from './read.ts';
 
 const SYSTEM = `You help an image generator draw a whole figure from a picture that shows only part of it. Your paragraph is the only thing the generator sees: it must be exact about what is visible, and sensible about what is not.
 First, look closely at the visible part and describe it as exactly as you can, as it is in the picture and without improving or changing it: its colors (grayscale if the picture is black and white), its materials, its pose and which way it faces, and every item you can see, each with its own detail (a headdress and its stripes or emblem, the hair, the face with its features and expression, the beard, each collar or necklace, armor with its texture or scales, jewelry, clothing, patterns, engraved or painted marks, weapons).
@@ -23,34 +22,16 @@ ${look}
 Keep who or what the figure is, its pose, which way it faces and its main items (headdress, collar, clothing, props), and change everything the look decides: its shapes, proportions, colors, materials, linework, textures and rendering, described as that look would make them. Write the whole paragraph as a description of a figure drawn in this look, so that the look runs through every sentence and its own words are used, and say in the last sentence what the look is. Where this conflicts with "as it is in the picture" or with the example, this wins.`;
 
 /** The model's paragraph, cleaned: its lines joined, no quotes, no longer than the prompt can use. Null when empty. */
-export function parseWhole(text: string): string | null {
-  const lines = text.trim().split('\n').map((l) => l.trim()).filter(Boolean);
-  const joined = lines.join(' ').replace(/^["'“]+|["'”]+$/g, '').replace(/\s+/g, ' ').trim();
-  if (!joined) return null;
-  if (joined.length <= MAX_LENGTH) return joined;
-  const cut = joined.slice(0, MAX_LENGTH);
-  const end = cut.lastIndexOf('. ');
-  return end > MAX_LENGTH / 2 ? cut.slice(0, end + 1) : cut;
-}
+export const parseWhole = (text: string) => cleanAnswer(text, MAX_LENGTH);
 const MAX_LENGTH = 1400;
 
 /** What the whole figure looks like, in a short detailed paragraph, from the picture; null when no model is set up or it could not answer. */
-export async function readWholeFigure(png: Buffer, signal?: AbortSignal, look: string[] = []): Promise<string | null> {
-  if (!provider().provider) return null;
-  try {
-    const res = await chat({
-      maxTokens: 4000,
-      effort: 'low',
-      signal,
-      messages: [
-        { role: 'system', content: look.length ? `${SYSTEM}\n${LOOK_RULES(look.join(' '))}` : SYSTEM },
-        { role: 'user', content: [imagePart(await forModel(png, 768)), textPart(look.length ? `Describe this figure full-length, drawn in the look given.` : 'Describe this figure full-length.')] },
-      ],
-    });
-    return parseWhole(res.message.content ?? '');
-  } catch (e) {
-    if (signal?.aborted) throw e;
-    console.error('[restyle] could not describe the whole figure:', (e as Error).message);
-    return null;
-  }
+export function readWholeFigure(png: Buffer, signal?: AbortSignal, look: string[] = []): Promise<string | null> {
+  return readPicture(png, {
+    system: look.length ? `${SYSTEM}\n${LOOK_RULES(look.join(' '))}` : SYSTEM,
+    ask: look.length ? 'Describe this figure full-length, drawn in the look given.' : 'Describe this figure full-length.',
+    max: MAX_LENGTH,
+    what: 'describe the whole figure',
+    signal,
+  });
 }

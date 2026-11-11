@@ -278,6 +278,8 @@ export interface DrawSettings {
   startCutout?: boolean;
   /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
   whole?: { prompt: string };
+  /** Remix: the sentence the model read the picture as, which opens the redraw's prompt. */
+  remix?: { read: string };
   /** The upscaling model that enlarged it, when one did. */
   enlargedWith?: string;
 }
@@ -370,8 +372,17 @@ export interface VectorDrawing {
   summary: string;
 }
 
-/** An art style or substyle by id, with its art style. */
+/** Remix, an illustration's style that is not one of Talari's but the picture's own: the model reads what the picture is as a drawing
+ * (its medium and look, and its subject exactly: "A black ink line drawing of a lily with three open blooms on a plain white
+ * background"), and that sentence is the prompt, so each picture of a batch comes back as a new piece of its own kind, in its own
+ * style. Drawn Balanced (denoise 0.5), which kept the look and redrew the subject best when tried by hand on one-ink flowers.
+ * It has no words of its own, is not rotated through, and has no reference picture. */
+export const REMIX_STYLE = 'remix';
+export const REMIX_STYLE_LABEL = 'Remix';
+
+/** An art style or substyle by id, with its art style (none for Remix, the picture's own). */
 export function findStyle(id: string) {
+  if (id === REMIX_STYLE) return { art: null, sub: null, label: REMIX_STYLE_LABEL, words: '' };
   for (const art of CATALOG.artStyles) {
     if (art.id === id) return { art, sub: null, label: art.label, words: art.words };
     const sub = art.substyles.find((s) => s.id === id);
@@ -384,7 +395,8 @@ export function findStyle(id: string) {
 export function styleFits(type: OutputType, id: string) {
   const styles = OUTPUT_TYPES.find((t) => t.value === type)?.styles;
   const found = findStyle(id);
-  return !!found && (!styles || styles.includes(found.art.id));
+  if (!found) return false;
+  return found.art ? !styles || styles.includes(found.art.id) : PICTURE_LED_TYPES.includes(type);
 }
 
 /** Every style an output type offers, in the order its dropdown lists them: each art style, then its own substyles. */
@@ -512,6 +524,8 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (r.seed !== undefined) rows.push({ label: 'Seed', value: String(r.seed) });
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
+  if (s?.remix) rows.push({ label: 'Read as', value: s.remix.read });
+  else if (o.style === REMIX_STYLE && s && !s.whole) rows.push({ label: 'Read as', value: 'not read (no model answered), so asked for as a variation of the picture' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
   if (s?.whole) {
     rows.push({ label: 'Draw it whole', value: 'the whole figure, described by the model and drawn from that sentence alone on a taller canvas (Follow the original does not apply)' });

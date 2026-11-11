@@ -27,7 +27,7 @@ const BARE_BACKGROUND = 'Isolated on a plain pure white background, with no floo
 export function lookWords(o: RestyleOptions): string[] {
   const parts: string[] = [];
   const style = findStyle(o.style);
-  if (style) parts.push(`In this style: ${style.words}.`);
+  if (style?.words) parts.push(`In this style: ${style.words}.`);
   const theme = findTheme(o.theme);
   if (theme) {
     const name = theme.label.replace(/&/g, 'and');
@@ -39,10 +39,13 @@ export function lookWords(o: RestyleOptions): string[] {
 
 /** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. That sentence
  * is written in the look already (the model is given it, to describe the character as that look would draw it), so the
- * look is not added after it: words tacked on to a description of the original did not change what was drawn. */
-export function restylePrompt(o: RestyleOptions, key?: KeyColor, lead?: string) {
+ * look is not added after it: words tacked on to a description of the original did not change what was drawn.
+ * `remix` also replaces it, for Remix: the model's sentence about what the picture is as a drawing (its own ground included
+ * when it keeps it). A theme and the user's words still follow it, and the ground chosen, as for any illustration. */
+export function restylePrompt(o: RestyleOptions, key?: KeyColor, lead?: string, remix?: string) {
   if (o.type === 'vector' || o.type === 'trace') throw new Error('A flat SVG is drawn by the model, and a trace made by the worker, not by ComfyUI: neither has a prompt.');
-  const parts = [lead ? lead.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : VARIATION];
+  const opening = lead ?? remix;
+  const parts = [opening ? opening.replace(/\s+/g, ' ').replace(/([^.!?])$/, '$1.') : VARIATION];
   if (!lead) parts.push(...lookWords(o));
   // with no ground chosen the picture keeps its own, and the prompt says nothing about it; a whole figure is still asked for
   // on a plain white one (it has none of its own, and is drawn from nothing)
