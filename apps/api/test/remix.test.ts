@@ -43,21 +43,21 @@ test('without a model nothing is described (the job refuses to draw it then)', a
 
 test(`it is drawn on a blank canvas, without the picture, at ${REMIX_DENOISE} in ${REMIX_STEPS} steps whatever the quality or how closely it follows`, () => {
   assert.equal(REMIX_STEPS, 16);
-  assert.equal(REMIX_DENOISE, 0.85);
-  for (const closeness of ['close', 'balanced', 'loose']) assert.equal(denoiseOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, closeness })), 0.85, closeness);
+  assert.equal(REMIX_DENOISE, 1);
+  for (const closeness of ['close', 'balanced', 'loose']) assert.equal(denoiseOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, closeness })), 1, closeness);
   assert.deepEqual(['close', 'balanced', 'loose'].map((closeness) => denoiseOf(cleanOptions({ type: 'illustration', style: '', closeness }))), [0.4, 0.5, 0.6], 'other illustrations keep theirs');
   assert.equal(denoiseOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, whole: true })), WHOLE_DENOISE, 'Draw it whole is drawn as a whole figure');
   const flux = { unet: 'flux.gguf', t5: 't5', clipL: 'clip_l', vae: 'ae', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0 };
-  const w = restyleWorkflow(flux as any, { prompt: DESCRIBED, width: 832, height: 1296, steps: 16, denoise: 0.85, seed: 1, blank: true });
+  const w = restyleWorkflow(flux as any, { prompt: DESCRIBED, width: 832, height: 1296, steps: 16, denoise: 1, seed: 1, blank: true });
   assert.deepEqual(w['7'], { class_type: 'EmptySD3LatentImage', inputs: { width: 832, height: 1296, batch_size: 1 } });
   assert.ok(!Object.values(w).some((n: any) => n.class_type === 'LoadImage'), 'no picture is loaded');
-  assert.equal(w['8'].inputs.denoise, 0.85);
+  assert.equal(w['8'].inputs.denoise, 1);
 
   const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, quality: 'high' });
   assert.match(settingRows({ options: o } as any).find((r) => r.label === 'Drawn at')!.value, /, 16 steps$/);
-  const settings = { model: 'flux', width: 832, height: 1296, steps: 16, denoise: 0.85, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, remix: { description: DESCRIBED } };
+  const settings = { model: 'flux', width: 832, height: 1296, steps: 16, denoise: 1, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, remix: { description: DESCRIBED } };
   const rows = settingRows({ options: o, settings, seed: 1, size: [832, 1296] } as any);
-  assert.equal(rows.find((r) => r.label === 'Drawn from')!.value, 'a description of the picture, on a blank canvas: denoise 0.85');
+  assert.equal(rows.find((r) => r.label === 'Drawn from')!.value, 'a description of the picture, on a blank canvas: denoise 1');
   assert.equal(rows.find((r) => r.label === 'Described as')!.value, DESCRIBED);
   assert.ok(!rows.some((r) => r.label === 'Follow the original'), 'how closely it follows does not apply');
 });

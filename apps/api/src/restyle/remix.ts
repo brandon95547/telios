@@ -1,6 +1,6 @@
 // Remix: a new piece drawn from a detailed description of the picture, not from the picture. Redrawn from the picture itself, FLUX
 // kept nearly every line at any denoise that did not lose it altogether; drawn on a blank canvas from a paragraph that describes the
-// picture closely (its medium, its subject and each of its parts, where they sit, the line work), at 0.85, it came back as the same
+// picture closely (its medium, its subject and each of its parts, where they sit, the line work), at 1, it came back as the same
 // kind of design, in the same style, with its own shapes (the user's test on the ComfyUI test bench, 2026-11-12). So the model reads
 // each picture and writes that paragraph, and the paragraph is the prompt.
 

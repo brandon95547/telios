@@ -387,12 +387,14 @@ export interface VectorDrawing {
 /** Remix, an illustration's style that is not one of Talari's but the picture's own: the model describes the picture closely, and
  * that paragraph is drawn on a blank canvas, without the picture, at REMIX_DENOISE in REMIX_STEPS steps whatever the quality (the
  * user's recipe from the ComfyUI test bench, 2026-11-12), so each picture comes back as a new piece of its own kind, in its own style,
- * not a copy of it. Follow the original does not apply: nothing of the picture is drawn from.
+ * not a copy of it. Follow the original does not apply: nothing of the picture is drawn from. At 0.85 the blank canvas's leftover
+ * gray came back as a photo of a sketchbook or a smoky gray backdrop; at 1 the ground is the plain white the description asks for
+ * (and a white start canvas, tried too, shrank the design to a speck).
  * It has no words of its own, is not rotated through, and has no reference picture. */
 export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';
 export const REMIX_STEPS = 16;
-export const REMIX_DENOISE = 0.85;
+export const REMIX_DENOISE = 1;
 
 /** An art style or substyle by id, with its art style (none for Remix, the picture's own). */
 export function findStyle(id: string) {
