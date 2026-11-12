@@ -278,8 +278,6 @@ export interface DrawSettings {
   startCutout?: boolean;
   /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
   whole?: { prompt: string };
-  /** Remix: the sentence the model read the picture as, which opens the redraw's prompt. */
-  remix?: { read: string };
   /** The upscaling model that enlarged it, when one did. */
   enlargedWith?: string;
 }
@@ -372,13 +370,13 @@ export interface VectorDrawing {
   summary: string;
 }
 
-/** Remix, an illustration's style that is not one of Talari's but the picture's own: the model reads what the picture is as a drawing
- * (its medium and look, and its subject exactly: "A black ink line drawing of a lily with three open blooms on a plain white
- * background"), and that sentence is the prompt, so each picture of a batch comes back as a new piece of its own kind, in its own
- * style. Drawn Balanced (denoise 0.5), which kept the look and redrew the subject best when tried by hand on one-ink flowers.
+/** Remix, an illustration's style that is not one of Talari's but the picture's own: ComfyUI is told only to remix the picture
+ * on white (the user's wording, 2026-11-12), so each picture of a batch comes back as a new piece of its own kind, in its own style.
+ * Drawn Balanced (denoise 0.5) in REMIX_STEPS steps, whatever the quality, which is how the user remixes by hand.
  * It has no words of its own, is not rotated through, and has no reference picture. */
 export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';
+export const REMIX_STEPS = 16;
 
 /** An art style or substyle by id, with its art style (none for Remix, the picture's own). */
 export function findStyle(id: string) {
@@ -514,7 +512,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
     return rows;
   }
-  rows.push({ label: 'Drawn at', value: s ? `${s.width} × ${s.height} px, ${s.steps} steps (${q.label})` : `${q.label}: ${q.size} px, ${q.steps} steps` });
+  rows.push({ label: 'Drawn at', value: s ? `${s.width} × ${s.height} px, ${s.steps} steps (${q.label})` : `${q.label}: ${q.size} px, ${o.style === REMIX_STYLE && !o.whole ? REMIX_STEPS : q.steps} steps` });
   rows.push({ label: 'Follow the original', value: `${CLOSENESS.find((c) => c.value === o.closeness)?.label ?? o.closeness}${s ? `, denoise ${trim(s.denoise)}` : ''}` });
   if (s) {
     rows.push({ label: 'Model', value: s.model });
@@ -524,8 +522,6 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (r.seed !== undefined) rows.push({ label: 'Seed', value: String(r.seed) });
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
-  if (s?.remix) rows.push({ label: 'Read as', value: s.remix.read });
-  else if (o.style === REMIX_STYLE && s && !s.whole) rows.push({ label: 'Read as', value: 'not read (no model answered), so asked for as a variation of the picture' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
   if (s?.whole) {
     rows.push({ label: 'Draw it whole', value: 'the whole figure, described by the model and drawn from that sentence alone on a taller canvas (Follow the original does not apply)' });

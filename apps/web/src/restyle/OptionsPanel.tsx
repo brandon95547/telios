@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalCards } from './GoalCards.tsx';
 
@@ -113,9 +113,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <input type="checkbox" checked={options.rotateStyles} onChange={(e) => set('rotateStyles', e.target.checked)} /> Rotate styles
           </label>
           {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
-          {!options.rotateStyles && options.style === REMIX_STYLE && (health && !health.model.ok
-            ? <div className="sub warn">Remix needs the model to read each picture: {health.model.error ?? 'set one up in .env'}. Without it, it is asked for as a remix with nothing said about what it shows.</div>
-            : <div className="sub">The model reads what each picture is (such as a black ink line drawing of a lily on white), and it is redrawn as a new piece in that same style. Balanced suits it best.</div>)}
+          {!options.rotateStyles && options.style === REMIX_STYLE && <div className="sub">Each picture is redrawn as a new piece in its own style, on white, in {REMIX_STEPS} steps. Balanced suits it best.</div>}
           {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>

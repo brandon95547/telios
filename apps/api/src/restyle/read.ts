@@ -1,5 +1,5 @@
-// The model reads a picture and answers in words: Draw it whole's paragraph about the whole figure, and Remix's sentence about what the
-// picture is as a drawing. Both are prompts for the redraw, so the answer is cleaned to one run of prose.
+// The model reads a picture and answers in words: Draw it whole's paragraph about the whole figure, which is the prompt for the
+// redraw, so the answer is cleaned to one run of prose.
 
 import { chat, imagePart, provider, textPart } from '../engine/llm.ts';
 import { forModel } from '../engine/render.ts';

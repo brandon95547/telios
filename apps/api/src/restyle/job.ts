@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, REMIX_STYLE, WHOLE_DENOISE, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, CLOSENESS, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
@@ -15,7 +15,6 @@ import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../c
 import { KEY_HEX, lookWords, restylePrompt, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readWholeFigure } from './whole.ts';
-import { readRemix } from './remix.ts';
 import { stagesOf } from './progress.ts';
 import { getInput, rel, resultDir, updateResult } from './store.ts';
 
@@ -118,15 +117,14 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const clearing = !keep && (o.background !== 'white' || byModel);
     const byColor = clearing && !removal;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
-    // Remix: the model reads what the picture is as a drawing (Draw it whole describes the figure itself, so it reads nothing more)
-    const remixing = o.style === REMIX_STYLE && !o.whole;
+    // Remix is drawn in its own few steps, whatever the quality (Draw it whole is drawn as any whole figure)
+    const steps = o.style === REMIX_STYLE && !o.whole ? REMIX_STEPS : quality.steps;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
       { label: 'Preparing the picture', seconds: 2 },
       ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
-      ...(remixing ? [{ label: 'Reading the picture', seconds: 4 }] : []),
       ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
-      { label: 'Drawing', seconds: Math.round(28 * quality.steps / 20) },
+      { label: 'Drawing', seconds: Math.round(28 * steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
       { label: 'Finishing', seconds: 2 },
@@ -143,13 +141,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       if (!lead) throw new Error('Draw it whole needs the model to describe the figure, and it could not: try again.');
     }
     const warnings: string[] = [];
-    let remix: string | undefined;
-    if (remixing) {
-      stage('Reading the picture');
-      remix = (await readRemix(source, signal, keep)) ?? undefined;
-      if (!remix) warnings.push('Drawn without reading the picture (no model answered), so it was asked for as a remix of it, with nothing said about what it shows.');
-    }
-    const prompt = restylePrompt(o, key ?? undefined, lead, remix);
+    const prompt = restylePrompt(o, key ?? undefined, lead);
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
 
@@ -195,15 +187,14 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     // what ComfyUI is given, kept with the result for the preview to show (the cutout and any enlargement are added below)
     const settings: DrawSettings = {
-      model: flux.unet, width: w, height: h, steps: quality.steps, denoise, guidance: flux.guidance,
+      model: flux.unet, width: w, height: h, steps, denoise, guidance: flux.guidance,
       sampler: flux.sampler, scheduler: flux.scheduler, easycache: flux.easycache,
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
       ...(o.whole && { whole: { prompt } }),
-      ...(remix && { remix: { read: remix } }),
     };
     updateResult(id, (x) => { x.settings = settings; });
-    let png = await comfy().run(restyleWorkflow(flux, { prompt, width: w, height: h, steps: quality.steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
+    let png = await comfy().run(restyleWorkflow(flux, { prompt, width: w, height: h, steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
 
     if (clearing) {
       stage('Clearing the background');
