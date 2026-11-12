@@ -133,10 +133,12 @@ export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: 
  * detail (tried on a photographed bust, three seeds: 0.30 is a near copy, 0.60 and up starts to lose the subject, and
  * at 0.70 from a photo a bust became a man in a flight suit). */
 export type Closeness = 'close' | 'balanced' | 'loose';
-export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: number }[] = [
-  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: 0.4 },
-  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: 0.5 },
-  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: 0.6 },
+// `remix` is Remix's own denoise (the user's values, 2026-11-12): drawn at full size, FLUX keeps nearly every line of the picture at
+// 0.5–0.6, so a remix needs more room (the ComfyUI test bench's 0.5 remixed only because it drew at 256 px)
+export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: number; remix: number }[] = [
+  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: 0.4, remix: 0.6 },
+  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: 0.5, remix: 0.8 },
+  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: 0.6, remix: 0.85 },
 ];
 /** The output types redrawn from half of the way or less (CLOSENESS): the picture carries what it shows, so the prompt does not
  * describe it (redrawn from most of the way, with the picture and no words for its subject, FLUX drew a skull and a heap of rocks). */
@@ -148,6 +150,13 @@ export const PICTURE_LED_TYPES: OutputType[] = ['illustration'];
  * alike, as only 1.0 gave a standing figure (tried on a pharaoh's bust and an anime pharaoh's). The picture is
  * only read by the model, and the figure is a new one inspired by it. */
 export const WHOLE_DENOISE = 1;
+
+/** The denoise a picture is redrawn at: a whole figure from nothing, a remix and any other illustration by how closely it follows. */
+export function denoiseOf(o: Pick<RestyleOptions, 'whole' | 'style' | 'closeness'>) {
+  if (o.whole) return WHOLE_DENOISE;
+  const c = CLOSENESS.find((x) => x.value === o.closeness)!;
+  return o.style === REMIX_STYLE ? c.remix : c.denoise;
+}
 export const WHOLE_ASPECT = 2 / 3;
 /** The shapes a whole figure may be drawn on: width to height. 2:3 is tall (a figure standing), 3:2 is wide. */
 export type Ratio = '2:3' | '3:2';
@@ -370,9 +379,9 @@ export interface VectorDrawing {
   summary: string;
 }
 
-/** Remix, an illustration's style that is not one of Talari's but the picture's own: ComfyUI is told only to remix the picture
- * on white (the user's wording, 2026-11-12), so each picture of a batch comes back as a new piece of its own kind, in its own style.
- * Drawn Balanced (denoise 0.5) in REMIX_STEPS steps, whatever the quality, which is how the user remixes by hand.
+/** Remix, an illustration's style that is not one of Talari's but the picture's own: ComfyUI is asked only for a similar picture
+ * inspired by it, on white (the user's wording, 2026-11-12), so each picture of a batch comes back as a new piece of its own kind, in
+ * its own style. Drawn at CLOSENESS's `remix` denoise, in REMIX_STEPS steps whatever the quality, as the user draws one by hand.
  * It has no words of its own, is not rotated through, and has no reference picture. */
 export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';

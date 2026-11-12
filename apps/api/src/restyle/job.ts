@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, CLOSENESS, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, REMIX_STEPS, REMIX_STYLE, denoiseOf, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
@@ -170,7 +170,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     stage('Drawing');
     const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
-    const denoise = o.whole ? WHOLE_DENOISE : CLOSENESS.find((c) => c.value === o.closeness)!.denoise;
+    const denoise = denoiseOf(o);
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
     // takes the picture's look, not its subject); without the picture, or the files USO needs, it is

@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalCards } from './GoalCards.tsx';
 
@@ -97,7 +97,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <div className="label">Illustration style</div>
           <select value={options.style} disabled={options.rotateStyles} onChange={(e) => {
             set('style', e.target.value);
-            // a remix keeps the picture's look and redraws its subject best Balanced (denoise 0.5)
+            // a remix starts Balanced (denoise 0.8 for a remix)
             if (e.target.value === REMIX_STYLE) set('closeness', 'balanced');
           }}>
             <option value="">{options.rotateStyles ? 'Rotating through them' : 'None selected'}</option>
@@ -137,7 +137,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
           <div className="sub">{options.whole && !noWhole
             ? `Denoise ${WHOLE_DENOISE}, while Draw it whole is on.`
-            : `Denoise ${CLOSENESS.find((c) => c.value === options.closeness)?.denoise}.`}</div>
+            : `Denoise ${denoiseOf({ ...options, whole: false })}.`}</div>
         </div>}
         {pictureLed && (
           <div className="field">
