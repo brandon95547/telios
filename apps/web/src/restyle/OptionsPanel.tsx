@@ -1,6 +1,6 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
-import { GoalCards } from './GoalCards.tsx';
+import { GoalPicker } from './GoalPicker.tsx';
 
 type Set = <K extends keyof RestyleOptions>(key: K, value: RestyleOptions[K]) => void;
 
@@ -48,11 +48,13 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
   const noWhole = health && !health.model.ok ? `Draw it whole needs the model to describe the figure: ${health.model.error ?? 'set one up in .env'}` : '';
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
   const keepGround = options.background === 'original';
+  // Remix draws from its own description of the picture, so Draw it whole (which describes a whole figure) is not offered with it
+  const remixing = illustration && options.style === REMIX_STYLE && !options.rotateStyles;
   return (
     <>
       <section className="panel-section">
         <h2><span className="step">2</span> What do you want?</h2>
-        <GoalCards options={options} choose={choose} />
+        <GoalPicker options={options} choose={choose} />
         {byModel && (
           <div className="sub">
             {health && !health.model.ok
@@ -75,6 +77,15 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
         )}
         {traced && goal.id === 'vector' && <Toggle label="Clear the background inside the design" on={options.clearInside} onChange={(v) => set('clearInside', v)}
           hint="On: the plain ground showing between the vines and leaves is made transparent. Off: it is kept, as for a white flower on a white page." />}
+        {goal.id === 'repeat' && (
+          <label className="field">
+            <div className="label">Repeats</div>
+            <select value={options.madeFor} onChange={(e) => set('madeFor', e.target.value as RestyleOptions['madeFor'])}>
+              {REPEATS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+            <div className="sub">{REPEATS.find((r) => r.value === options.madeFor)?.hint}</div>
+          </label>
+        )}
         {traced && <Toggle label="Keep the original background" on={keepGround} onChange={(v) => set('background', v ? 'original' : 'transparent')}
           hint={goal.id === 'vector' ? 'Off: a scan\u2019s paper margin is cleared and the design keeps its own ground.' : 'Off: the color behind the design is taken out, so an app can recolor it.'} />}
         {cutout && (
@@ -97,6 +108,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <div className="label">Illustration style</div>
           <select value={options.style} disabled={options.rotateStyles} onChange={(e) => {
             set('style', e.target.value);
+            if (e.target.value === REMIX_STYLE) set('whole', false);
           }}>
             <option value="">{options.rotateStyles ? 'Rotating through them' : 'None selected'}</option>
             <option value={REMIX_STYLE}>{REMIX_STYLE_LABEL} (the picture's own style)</option>
@@ -132,7 +144,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           </select>
         </label>}
         {/* a remix draws nothing from the picture (only from its description), so how closely to follow it does not apply */}
-        {illustration && !(options.style === REMIX_STYLE && !options.rotateStyles && !options.whole) && <div className="field">
+        {illustration && !remixing && <div className="field">
           <div className="label">Follow the original</div>
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>
@@ -140,7 +152,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             ? `Denoise ${WHOLE_DENOISE}, while Draw it whole is on.`
             : `Denoise ${denoiseOf({ ...options, whole: false })}.`}</div>
         </div>}
-        {pictureLed && (
+        {pictureLed && !remixing && (
           <div className="field">
             <Toggle label="Draw it whole" on={options.whole && !noWhole} onChange={(v) => set('whole', v)} disabled={!!noWhole} />
             {noWhole && <div className="sub warn">{noWhole}</div>}

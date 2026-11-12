@@ -1,5 +1,5 @@
 // A picture traced as it is into a few flat colors, one SVG layer per color (the worker's `trace`: near colors merged, TRACE_MERGE,
-// and a scan's paper margin cleared, unless the picture keeps its own ground). Same picture as vector traces the input with it, and
+// and a scan's paper margin cleared, unless the picture keeps its own ground). Image to SVG traces the input with it, and
 // Remix traces what ComfyUI drew.
 
 import { TRACE_MAX_COLORS, TRACE_MERGE, type RestyleOptions } from '@telios/shared';

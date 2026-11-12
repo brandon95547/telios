@@ -20,8 +20,9 @@ export type PieceClass = 'frame' | 'border' | 'corner' | 'tile' | 'object';
 
 export const classOf = (kind: Kind): PieceClass => (({ frame: 'frame', border: 'border', corner: 'corner', pattern: 'tile' }) as Partial<Record<Kind, PieceClass>>)[kind] ?? 'object';
 
-/** The kind a picture is drawn as: what the model read, unless the user said what it is made for. */
-export function kindFor(target: Target | undefined, read: Kind): Kind {
+/** The kind a picture is drawn as: what the model read, unless the user said what it is made for (a remix, or a repeat still to be found,
+ * says nothing about it). */
+export function kindFor(target: Target | string | undefined, read: Kind): Kind {
   switch (target) {
     case 'frame': return 'frame';
     case 'border': return 'border';

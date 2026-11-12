@@ -69,6 +69,16 @@ export const workerOnly = (o: { type: OutputType; madeFor?: string }) => tracedO
  * along its length). Not a frame or a corner: an app fits those to a page by data a trace does not have. */
 export const TRACE_TARGETS = TARGETS.filter((t) => t.value === 'object' || t.value === 'pattern' || t.value === 'border');
 
+/** A repeat whose direction the tracer finds for itself: a long thin picture is tried as a border first, anything else as a pattern tile,
+ * then the other. The result is saved as what was found (pattern or border). */
+export const REPEAT = 'repeat';
+/** The Repeats setting of Pattern to repeating SVG: found, or said. */
+export const REPEATS: { value: typeof REPEAT | 'pattern' | 'border'; label: string; hint: string }[] = [
+  { value: REPEAT, label: 'Find it for me', hint: 'Tried both ways: across and down, and in one direction.' },
+  { value: 'pattern', label: 'Across and down', hint: 'A pattern: one tile that repeats in rows and columns.' },
+  { value: 'border', label: 'In one direction', hint: 'A border: one strip that repeats along its length.' },
+];
+
 /** What a person asks for, in their words. Each goal is one way of using the tool, and says what it gives, how long it takes and what it costs;
  * the type and "made for" it sets are how the tool does it. The Choose step lists these, not the types. */
 export interface Goal {
@@ -81,20 +91,23 @@ export interface Goal {
   speed: string;
   cost: string;
   type: OutputType;
-  madeFor: Target | typeof REMIX;
+  madeFor: Target | typeof REMIX | typeof REPEAT;
+  /** Other "made for"s it covers: Pattern to repeating SVG is the pattern and the border it finds. */
+  alsoFor?: string[];
 }
 export const GOAL_GROUPS = { copy: 'Copy what is there', new: 'Make something new' } as const;
+// Named as what goes in and what comes out (the user's names, 2026-11-12), three to a group
 export const GOALS: Goal[] = [
-  { id: 'vector', group: 'copy', label: 'Same picture as vector', line: 'The picture itself traced into flat colors. Its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
-  { id: 'cutout', group: 'copy', label: 'Cut out the object', line: 'A one-ink object lifted off its plain background, set level and cleaned up.', gives: 'Transparent WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
-  { id: 'tile', group: 'copy', label: 'Seamless pattern tile', line: 'One exact repeat of a pattern, ready to tile across and down.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'pattern' },
-  { id: 'border', group: 'copy', label: 'Border strip', line: 'One exact repeat of a border, ready to run to any length.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'border' },
-  { id: 'remix', group: 'new', label: 'New vector inspired by it', line: 'A new drawing with the same subject, style and colors but its own shapes: a batch of butterflies comes back as new butterflies.', gives: 'SVG', speed: 'Minutes', cost: 'A few cents each', type: 'trace', madeFor: REMIX },
-  { id: 'flat', group: 'new', label: 'New flat art for a frame, border, corner or ornament', line: 'New vector art made to fit a page, with the data that stretches it to any size.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
-  { id: 'illustration', group: 'new', label: 'Redraw in an art style', line: 'The picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
+  { id: 'vector', group: 'copy', label: 'Image to SVG', line: 'Your picture traced as it is, one layer per flat color: its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
+  { id: 'cutout', group: 'copy', label: 'Image to transparent PNG', line: 'The object lifted off its plain background, set level and cleaned up, as a transparent PNG or WebP.', gives: 'PNG or WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
+  { id: 'repeat', group: 'copy', label: 'Pattern to repeating SVG', line: 'One tile or strip that repeats seamlessly, across and down for a pattern or in one direction for a border.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: REPEAT, alsoFor: ['pattern', 'border'] },
+  { id: 'remix', group: 'new', label: 'Image to new SVG', line: 'A new design in the same style, with its own shapes: a batch of butterflies comes back as new butterflies.', gives: 'SVG', speed: 'Minutes', cost: 'A few cents each', type: 'trace', madeFor: REMIX },
+  { id: 'flat', group: 'new', label: 'Image to page-ready SVG', line: 'Clean flat art for a frame, border, corner or ornament that fits any page size, with the data an app needs.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
+  { id: 'illustration', group: 'new', label: 'Image to new art style', line: 'Your picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
 ];
 /** The goal a result or the chosen options come from; a result made before the types were dropped has none. */
-export const goalOf = (o: { type: OutputType | string; madeFor?: string }): Goal | undefined => GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor : true));
+export const goalOf = (o: { type: OutputType | string; madeFor?: string }): Goal | undefined =>
+  GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor || !!g.alsoFor?.includes(o.madeFor ?? '') : true));
 /** A short name for what a result was made as, for its tile. */
 export const madeAs = (o: { type: OutputType | string; madeFor?: string }) => goalOf(o)?.label ?? typeInfo(o.type).label;
 
@@ -228,7 +241,7 @@ export interface RestyleOptions {
   /** The shape of the canvas a whole figure is drawn on. */
   ratio: Ratio;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
-  madeFor: Target | typeof REMIX;
+  madeFor: Target | typeof REMIX | typeof REPEAT;
   /** A trace made for an object: how far its edges are evened out. */
   cleanup: CleanUp;
   /** A trace of color art on a plain ground leaves the large stretches of ground inside the design clear (between its vines and leaves), not filled. */
@@ -458,11 +471,13 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
+  // a remix draws from its own description of the picture, which Draw it whole's would replace
+  if (o.style === REMIX_STYLE) o.whole = false;
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
   o.clearInside = raw?.clearInside !== false;
   o.madeFor = o.type === 'vector' ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
-    : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX], 'object') : 'auto';
+    : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX, REPEAT], 'object') : 'auto';
   // a trace and a cutout are the same every time: one version (a remix is a new drawing each time, so it may have several)
   if (workerOnly(o)) o.variations = 1;
   // a remix is drawn by a model, which has no theme; a vector (flat SVG or remix) is shown on a checkerboard and has no background to choose
@@ -512,7 +527,9 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     return rows;
   }
   if (tracedOnly(o)) {
-    rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
+    rows.push(o.madeFor === REPEAT
+      ? { label: 'Repeats', value: 'to be found: across and down, or in one direction' }
+      : { label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     const t = r.traced?.tile;
     if (t) {
       rows.push({ label: 'Repeat found', value: t.lattice === 'strip'

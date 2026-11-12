@@ -34,6 +34,7 @@ test('a trace is made for an object (the default), a pattern tile or a border: i
   assert.equal(cleanOptions({ type: 'trace' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'pattern' }).madeFor, 'pattern');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'border' }).madeFor, 'border');
+  assert.equal(cleanOptions({ type: 'trace', madeFor: 'repeat' }).madeFor, 'repeat', 'or a repeat still to be found');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'frame' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'trace', madeFor: 'corner' }).madeFor, 'object');
   assert.equal(cleanOptions({ type: 'illustration', madeFor: 'pattern' }).madeFor, 'auto');
@@ -230,7 +231,7 @@ test('a border chosen as a pattern is told it is a border, in plain words', asyn
   await drawTrace('xborder3', new AbortController().signal);
   const r = getResult('xborder3')!;
   assert.equal(r.status, 'failed');
-  assert.match(r.error ?? '', /it is a border, not a pattern tile\. Choose Made for → Border/);
+  assert.match(r.error ?? '', /it is a border, not a pattern tile\. Choose Repeats → In one direction/);
 });
 
 test('a picture that does not repeat is refused as a pattern, in plain words', async () => {
@@ -240,6 +241,29 @@ test('a picture that does not repeat is refused as a pattern, in plain words', a
   assert.equal(r.status, 'failed');
   assert.match(r.error ?? '', /No repeating pattern was found/);
   assert.doesNotMatch(r.error ?? '', /ValueError/);
+});
+
+test('Find it for me makes a border of a border and a pattern of a pattern, and the result says which it found', async () => {
+  await makeBorder('xfind1', { madeFor: 'repeat' });
+  await drawTrace('xfind1', new AbortController().signal);
+  const border = getResult('xfind1')!;
+  assert.equal(border.status, 'done', border.error ?? '');
+  assert.equal(border.options.madeFor, 'border');
+  assert.equal(border.traced?.tile?.lattice, 'strip');
+  await makePattern('xfind2', 0, { madeFor: 'repeat' });
+  await drawTrace('xfind2', new AbortController().signal);
+  const pattern = getResult('xfind2')!;
+  assert.equal(pattern.status, 'done', pattern.error ?? '');
+  assert.equal(pattern.options.madeFor, 'pattern');
+  assert.notEqual(pattern.traced?.tile?.lattice, 'strip');
+});
+
+test('Find it for me says plainly when the picture repeats neither way', async () => {
+  await makeResult('xfind3', { madeFor: 'repeat' });
+  await drawTrace('xfind3', new AbortController().signal);
+  const r = getResult('xfind3')!;
+  assert.equal(r.status, 'failed');
+  assert.match(r.error ?? '', /No repeat was found in this picture: its design does not repeat across and down, or along its length/);
 });
 
 test('a trace that fails is told plainly and keeps nothing', async () => {

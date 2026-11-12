@@ -252,7 +252,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     fs.writeFileSync(path.join(dir, 'result.png'), png);
 
-    // a remix is wanted as a vector: what was drawn, traced into flat colors as Same picture as vector traces a picture (the drawing is
+    // a remix is wanted as a vector: what was drawn, traced into flat colors as Image to SVG traces a picture (the drawing is
     // kept too, and stays the result if the trace fails)
     let svg = false;
     if (remixing) {

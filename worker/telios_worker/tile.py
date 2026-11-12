@@ -409,7 +409,7 @@ def tile(source, outdir, max_colors=8, twins=DISTINCT, title='Telios', blend=BLE
         # a strip that repeats along its length only is a border, not a pattern
         along = px if gray.shape[1] >= gray.shape[0] else py
         if (px or py) and not (px and py) and max(gray.shape) >= 2 * min(gray.shape) and along:
-            raise ValueError('This repeats along its length only: it is a border, not a pattern tile. Choose Made for → Border.')
+            raise ValueError('This repeats along its length only: it is a border, not a pattern tile. Choose Repeats → In one direction.')
         raise ValueError('No repeating pattern was found in this picture. A pattern tile needs a design that repeats at least twice across and down.')
     cw, rx = refine(gray, 0, px[0])
     ch, ry = refine(gray, 1, py[0])

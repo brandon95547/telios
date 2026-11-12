@@ -59,7 +59,7 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
     updateDesign(design.id, (d) => {
       const rd = d.reading;
       if (!rd) return;
-      rd.kind = kindFor(o.madeFor === REMIX ? 'auto' : o.madeFor, rd.kind);
+      rd.kind = kindFor(o.madeFor, rd.kind);
       const axis = ({ frame: 'edges', border: 'x', tile: 'lattice' } as const)[classOf(rd.kind) as 'frame' | 'border' | 'tile'];
       if (axis && rd.repeats.axis === 'none') rd.repeats = { axis, description: rd.repeats.description || `drawn as a ${rd.kind}, as asked`, count: rd.repeats.count };
       rd.confirmed = true;

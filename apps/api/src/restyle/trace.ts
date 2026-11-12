@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp, { type OverlayOptions } from 'sharp';
-import { BACKGROUND_HEX, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, kindFor, lightnessOf } from '@telios/shared';
+import { BACKGROUND_HEX, REPEAT, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, kindFor, lightnessOf } from '@telios/shared';
 import type { RestyleResult, TraceTile } from '@telios/shared';
 import { python } from '../python.ts';
 import { screenCopies } from './job.ts';
@@ -63,8 +63,10 @@ export async function drawTrace(id: string, signal: AbortSignal) {
   if (!r) return;
   const dir = resultDir(id);
   const o = r.options;
-  const strip = o.madeFor === 'border';
-  const tiled = o.madeFor === 'pattern' || strip;
+  // Find it for me: a pattern or a border, whichever the picture turns out to be
+  const finding = o.madeFor === REPEAT;
+  let strip = o.madeFor === 'border';
+  const tiled = o.madeFor === 'pattern' || strip || finding;
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `telios-${id}-`));
   try {
     const stage = stagesOf(id, tiled
@@ -72,11 +74,31 @@ export async function drawTrace(id: string, signal: AbortSignal) {
       : [{ label: 'Tracing to SVG', seconds: 8 }, { label: 'Finishing', seconds: 2 }]);
     stage(tiled ? 'Finding the repeat' : 'Tracing to SVG');
     const source = path.join(dir, 'source.png');
+    // a tile keeps the picture's own ground only where that was asked for
+    const tileAs = (border: boolean) => python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(border ? ['--border'] : []), ...(o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000);
     let traced: Traced;
-    if (tiled) {
+    if (finding) {
+      // a long thin picture is tried as a border first, anything else as a pattern tile; then the other way
+      const m = await sharp(source).metadata();
+      const first = Math.max(m.width!, m.height!) >= 2 * Math.min(m.width!, m.height!);
       try {
-        // a tile keeps the picture's own ground only where that was asked for
-        traced = await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : []), ...(o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000);
+        traced = await tileAs(first);
+        strip = first;
+      } catch {
+        if (signal.aborted) throw new Error('Stopped.');
+        try {
+          traced = await tileAs(!first);
+          strip = !first;
+        } catch {
+          throw new Error('No repeat was found in this picture: its design does not repeat across and down, or along its length, at least twice.');
+        }
+      }
+      // saved as what was found, so the result says pattern or border, and its package and preview follow
+      o.madeFor = strip ? 'border' : 'pattern';
+      updateResult(id, (x) => { x.options.madeFor = o.madeFor; });
+    } else if (tiled) {
+      try {
+        traced = await tileAs(strip);
       } catch (e) {
         throw new Error(plain(e));
       }
@@ -85,7 +107,7 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     const svg = fs.readFileSync(path.join(scratch, 'layered.svg'));
     fs.writeFileSync(path.join(dir, 'result.svg'), svg);
     // what the app package is made from (restyle/package.ts): there is no reading, so what it is made for decides its kind
-    const kind = kindFor(o.madeFor === 'remix' ? 'auto' : o.madeFor, 'other');
+    const kind = kindFor(o.madeFor, 'other');
     const t = tiled ? (traced as Tiled) : null;
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
       kind, rendering: 'flat', colorMode: 'full',

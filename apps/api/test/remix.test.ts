@@ -37,6 +37,11 @@ test('the prompt is the model\'s description of the picture, its ground in it, w
   assert.doesNotMatch(p, /variation|In this style|Isolated/);
 });
 
+test('Draw it whole is not offered with Remix, which draws from its own description of the picture', () => {
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, whole: true }).whole, false);
+  assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco', whole: true }).whole, true, 'it stays with any art style');
+});
+
 test('without a model nothing is described (the job refuses to draw it then)', async () => {
   assert.equal(await readRemix(Buffer.from('not a picture')), null);
 });

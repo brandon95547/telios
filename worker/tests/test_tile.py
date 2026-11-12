@@ -247,8 +247,8 @@ class Border(unittest.TestCase):
         self.assertIn('along its length', str(e.exception))
         with self.assertRaises(ValueError) as e:
             run(with_margin(strip(100, 120, 640)))
-        self.assertIn('Choose Made for', str(e.exception))
-        self.assertIn('Border', str(e.exception))
+        self.assertIn('Choose Repeats', str(e.exception))
+        self.assertIn('In one direction', str(e.exception))
 
     def test_a_thin_strip_is_not_cut_to_nothing_by_the_lean_search(self):
         thin = gray_of(strip(60, 24, 900).astype(np.float32))
