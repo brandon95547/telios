@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalCards } from './GoalCards.tsx';
 
@@ -97,8 +97,6 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <div className="label">Illustration style</div>
           <select value={options.style} disabled={options.rotateStyles} onChange={(e) => {
             set('style', e.target.value);
-            // a remix starts Balanced (denoise 0.8 for a remix)
-            if (e.target.value === REMIX_STYLE) set('closeness', 'balanced');
           }}>
             <option value="">{options.rotateStyles ? 'Rotating through them' : 'None selected'}</option>
             <option value={REMIX_STYLE}>{REMIX_STYLE_LABEL} (the picture's own style)</option>
@@ -113,7 +111,9 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <input type="checkbox" checked={options.rotateStyles} onChange={(e) => set('rotateStyles', e.target.checked)} /> Rotate styles
           </label>
           {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
-          {!options.rotateStyles && options.style === REMIX_STYLE && <div className="sub">Each picture is redrawn as a new piece in its own style, on white, in {REMIX_STEPS} steps, then traced into an SVG of flat colors. Balanced suits it best.</div>}
+          {!options.rotateStyles && options.style === REMIX_STYLE && (health && !health.model.ok
+            ? <div className="sub warn">Remix needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
+            : <div className="sub">The model describes each picture closely, and that description is drawn as a new piece on a blank canvas (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), then traced into an SVG of flat colors.</div>)}
           {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>
@@ -131,7 +131,8 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             ))}
           </select>
         </label>}
-        {illustration && <div className="field">
+        {/* a remix draws nothing from the picture (only from its description), so how closely to follow it does not apply */}
+        {illustration && !(options.style === REMIX_STYLE && !options.rotateStyles && !options.whole) && <div className="field">
           <div className="label">Follow the original</div>
           <Seg label="Follow the original" value={options.closeness} onChange={(v) => set('closeness', v)} options={CLOSENESS.map((c) => ({ value: c.value, label: c.label }))} />
           <div className="sub">{CLOSENESS.find((c) => c.value === options.closeness)?.hint}</div>

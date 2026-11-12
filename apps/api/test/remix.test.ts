@@ -6,13 +6,17 @@ import path from 'node:path';
 
 process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-test-'));
 
-const { REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
+process.env.TELIOS_PROVIDER = 'none';   // no model: nothing is described
+
+const { REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
 const sharp = (await import('sharp')).default;
 const { traceToSvg } = await import('../src/restyle/trace-svg.ts');
 const { cleanAnswer } = await import('../src/restyle/read.ts');
+const { readRemix } = await import('../src/restyle/remix.ts');
 const { lookWords, restylePrompt } = await import('../src/restyle/prompt.ts');
+const { restyleWorkflow } = await import('../src/comfy/workflows.ts');
 
-const REMIX = 'Create a similar image inspired by the attached image with a white background.';
+const DESCRIBED = 'A black ink tattoo flash design of a hibiscus flower in tribal style, solid black on a plain white background, vertical composition. Thick tapering S-curves and spiral curls fill the lower two-thirds';
 
 test('Remix is a style of an illustration only, named Remix, with no words of its own, and is not rotated through', () => {
   assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE }).style, REMIX_STYLE);
@@ -23,39 +27,46 @@ test('Remix is a style of an illustration only, named Remix, with no words of it
   assert.deepEqual(lookWords(cleanOptions({ type: 'illustration', style: REMIX_STYLE })), [], 'no "In this style" sentence');
 });
 
-test('the prompt only asks for a similar picture inspired by it, on white, whatever ground is chosen; a theme and the user\'s words follow it', () => {
+test('the prompt is the model\'s description of the picture, its ground in it, whatever ground is chosen; a theme and the user\'s words follow it', () => {
   for (const background of ['original', 'white', 'black']) {
-    assert.equal(restylePrompt(cleanOptions({ type: 'illustration', style: REMIX_STYLE, background })), REMIX, background);
+    assert.equal(restylePrompt(cleanOptions({ type: 'illustration', style: REMIX_STYLE, background }), undefined, undefined, DESCRIBED), `${DESCRIBED}.`, background);
   }
-  const p = restylePrompt(cleanOptions({ type: 'illustration', style: REMIX_STYLE, theme: 'egyptian', notes: 'thin lines' }));
-  assert.ok(p.startsWith(`${REMIX} `), p);
+  const p = restylePrompt(cleanOptions({ type: 'illustration', style: REMIX_STYLE, theme: 'egyptian', notes: 'thin lines' }), undefined, undefined, DESCRIBED);
+  assert.ok(p.startsWith(`${DESCRIBED}. `), p);
   assert.match(p, /themed, with .* motifs and ornament\. thin lines\.$/);
   assert.doesNotMatch(p, /variation|In this style|Isolated/);
 });
 
-test(`it is drawn in ${REMIX_STEPS} steps whatever the quality, and the preview says so`, () => {
-  assert.equal(REMIX_STEPS, 16);
-  const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, quality: 'high' });
-  assert.match(settingRows({ options: o } as any).find((r) => r.label === 'Drawn at')!.value, /, 16 steps$/);
-  const settings = { model: 'flux', width: 1024, height: 1024, steps: 16, denoise: 0.8, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0 };
-  const rows = settingRows({ options: o, settings, seed: 1, size: [1024, 1024] } as any);
-  assert.match(rows.find((r) => r.label === 'Drawn at')!.value, /16 steps/);
-  assert.match(rows.find((r) => r.label === 'Follow the original')!.value, /denoise 0\.8$/);
-  assert.ok(!rows.some((r) => r.label === 'Read as'), 'the picture is not read');
+test('without a model nothing is described (the job refuses to draw it then)', async () => {
+  assert.equal(await readRemix(Buffer.from('not a picture')), null);
 });
 
-test('a remix is drawn at its own denoise: 0.6 Closely, 0.8 Balanced, 0.85 Loosely; other illustrations keep theirs', () => {
-  const at = (closeness: string, style = REMIX_STYLE, whole = false) => denoiseOf(cleanOptions({ type: 'illustration', style, closeness, whole }));
-  assert.deepEqual(['close', 'balanced', 'loose'].map((c) => at(c)), [0.6, 0.8, 0.85]);
-  assert.deepEqual(['close', 'balanced', 'loose'].map((c) => at(c, '')), [0.4, 0.5, 0.6]);
-  assert.equal(at('balanced', REMIX_STYLE, true), WHOLE_DENOISE, 'Draw it whole is drawn from nothing');
+test(`it is drawn on a blank canvas, without the picture, at ${REMIX_DENOISE} in ${REMIX_STEPS} steps whatever the quality or how closely it follows`, () => {
+  assert.equal(REMIX_STEPS, 16);
+  assert.equal(REMIX_DENOISE, 0.85);
+  for (const closeness of ['close', 'balanced', 'loose']) assert.equal(denoiseOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, closeness })), 0.85, closeness);
+  assert.deepEqual(['close', 'balanced', 'loose'].map((closeness) => denoiseOf(cleanOptions({ type: 'illustration', style: '', closeness }))), [0.4, 0.5, 0.6], 'other illustrations keep theirs');
+  assert.equal(denoiseOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, whole: true })), WHOLE_DENOISE, 'Draw it whole is drawn as a whole figure');
+  const flux = { unet: 'flux.gguf', t5: 't5', clipL: 'clip_l', vae: 'ae', guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0 };
+  const w = restyleWorkflow(flux as any, { prompt: DESCRIBED, width: 832, height: 1296, steps: 16, denoise: 0.85, seed: 1, blank: true });
+  assert.deepEqual(w['7'], { class_type: 'EmptySD3LatentImage', inputs: { width: 832, height: 1296, batch_size: 1 } });
+  assert.ok(!Object.values(w).some((n: any) => n.class_type === 'LoadImage'), 'no picture is loaded');
+  assert.equal(w['8'].inputs.denoise, 0.85);
+
+  const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, quality: 'high' });
+  assert.match(settingRows({ options: o } as any).find((r) => r.label === 'Drawn at')!.value, /, 16 steps$/);
+  const settings = { model: 'flux', width: 832, height: 1296, steps: 16, denoise: 0.85, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, remix: { description: DESCRIBED } };
+  const rows = settingRows({ options: o, settings, seed: 1, size: [832, 1296] } as any);
+  assert.equal(rows.find((r) => r.label === 'Drawn from')!.value, 'a description of the picture, on a blank canvas: denoise 0.85');
+  assert.equal(rows.find((r) => r.label === 'Described as')!.value, DESCRIBED);
+  assert.ok(!rows.some((r) => r.label === 'Follow the original'), 'how closely it follows does not apply');
 });
 
 test('a remix is taken as its SVG, with the drawing beside it; without an SVG (the trace failed) as the drawing', () => {
   const options = cleanOptions({ type: 'illustration', style: REMIX_STYLE, format: 'webp' });
   assert.deepEqual(mainFile({ options, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'webp' });
   assert.deepEqual(mainFile({ options, files: {} }), { format: 'webp' });
-  const settings = { model: 'flux', width: 1024, height: 1024, steps: 16, denoise: 0.8, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, vector: { colors: 1 } };
+  const settings = { model: 'flux', width: 1024, height: 1024, steps: 16, denoise: 0.85, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, vector: { colors: 1 } };
   assert.equal(settingRows({ options, settings, seed: 1 } as any).find((r) => r.label === 'Vector')!.value, 'the drawing traced into 1 flat color, one SVG layer each');
 });
 

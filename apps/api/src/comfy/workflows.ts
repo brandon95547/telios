@@ -21,7 +21,7 @@ export const USO = {
 /** Image-to-image with FLUX.1 Dev: the picture (`source.png`) redrawn from `denoise` of the way. With
  * `style`, the picture `style.png` also gives the look (its color, brushwork and texture, not its
  * subject) at `weight`, by USO. */
-export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number; height: number; steps: number; denoise: number; seed: number; style?: { weight: number } }): Workflow {
+export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number; height: number; steps: number; denoise: number; seed: number; style?: { weight: number }; blank?: boolean }): Workflow {
   const gguf = f.unet.endsWith('.gguf');
   const w: Workflow = {
     '1': gguf ? { class_type: 'UnetLoaderGGUF', inputs: { unet_name: f.unet } } : { class_type: 'UNETLoader', inputs: { unet_name: f.unet, weight_dtype: 'default' } },
@@ -41,6 +41,11 @@ export function restyleWorkflow(f: FluxFiles, o: { prompt: string; width: number
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: 'telios' } },
   };
+  if (o.blank) {
+    // drawn from the words alone, on a blank canvas (Remix): no picture is given
+    delete w['20']; delete w['21'];
+    w['7'] = { class_type: 'EmptySD3LatentImage', inputs: { width: o.width, height: o.height, batch_size: 1 } };
+  }
   let model: [string, number] = ['1', 0];
   if (o.style) {
     // the vision model reads the picture; USO's LoRA and projector apply its style, not its subject

@@ -135,12 +135,10 @@ export const QUALITIES: { value: Exclude<Quality, 'auto'>; label: string; size: 
  * detail (tried on a photographed bust, three seeds: 0.30 is a near copy, 0.60 and up starts to lose the subject, and
  * at 0.70 from a photo a bust became a man in a flight suit). */
 export type Closeness = 'close' | 'balanced' | 'loose';
-// `remix` is Remix's own denoise (the user's values, 2026-11-12): drawn at full size, FLUX keeps nearly every line of the picture at
-// 0.5–0.6, so a remix needs more room (the ComfyUI test bench's 0.5 remixed only because it drew at 256 px)
-export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: number; remix: number }[] = [
-  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: 0.4, remix: 0.6 },
-  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: 0.5, remix: 0.8 },
-  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: 0.6, remix: 0.85 },
+export const CLOSENESS: { value: Closeness; label: string; hint: string; denoise: number }[] = [
+  { value: 'close', label: 'Closely', hint: "Keeps the original's shapes and layout.", denoise: 0.4 },
+  { value: 'balanced', label: 'Balanced', hint: 'Keeps the layout and redraws the details.', denoise: 0.5 },
+  { value: 'loose', label: 'Loosely', hint: 'Keeps the idea, with room for a new layout.', denoise: 0.6 },
 ];
 /** The output types redrawn from half of the way or less (CLOSENESS): the picture carries what it shows, so the prompt does not
  * describe it (redrawn from most of the way, with the picture and no words for its subject, FLUX drew a skull and a heap of rocks). */
@@ -153,11 +151,12 @@ export const PICTURE_LED_TYPES: OutputType[] = ['illustration'];
  * only read by the model, and the figure is a new one inspired by it. */
 export const WHOLE_DENOISE = 1;
 
-/** The denoise a picture is redrawn at: a whole figure from nothing, a remix and any other illustration by how closely it follows. */
+/** The denoise a picture is drawn at: a whole figure from nothing, a remix at its own (from a blank canvas), and any other illustration
+ * by how closely it follows the picture. */
 export function denoiseOf(o: Pick<RestyleOptions, 'whole' | 'style' | 'closeness'>) {
   if (o.whole) return WHOLE_DENOISE;
-  const c = CLOSENESS.find((x) => x.value === o.closeness)!;
-  return o.style === REMIX_STYLE ? c.remix : c.denoise;
+  if (o.style === REMIX_STYLE) return REMIX_DENOISE;
+  return CLOSENESS.find((x) => x.value === o.closeness)!.denoise;
 }
 export const WHOLE_ASPECT = 2 / 3;
 /** The shapes a whole figure may be drawn on: width to height. 2:3 is tall (a figure standing), 3:2 is wide. */
@@ -287,6 +286,8 @@ export interface DrawSettings {
   cutout?: { by: 'model' | 'color' | 'none'; with?: string };
   /** The picture was redrawn from its subject cut out and put on flat white, not from the picture as it was. */
   startCutout?: boolean;
+  /** Remix: the model's description of the picture, which is the prompt, drawn on a blank canvas. */
+  remix?: { description: string };
   /** Remix: what was drawn, traced into an SVG of this many flat colors. */
   vector?: { colors: number };
   /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
@@ -383,13 +384,15 @@ export interface VectorDrawing {
   summary: string;
 }
 
-/** Remix, an illustration's style that is not one of Talari's but the picture's own: ComfyUI is asked only for a similar picture
- * inspired by it, on white (the user's wording, 2026-11-12), so each picture of a batch comes back as a new piece of its own kind, in
- * its own style. Drawn at CLOSENESS's `remix` denoise, in REMIX_STEPS steps whatever the quality, as the user draws one by hand.
+/** Remix, an illustration's style that is not one of Talari's but the picture's own: the model describes the picture closely, and
+ * that paragraph is drawn on a blank canvas, without the picture, at REMIX_DENOISE in REMIX_STEPS steps whatever the quality (the
+ * user's recipe from the ComfyUI test bench, 2026-11-12), so each picture comes back as a new piece of its own kind, in its own style,
+ * not a copy of it. Follow the original does not apply: nothing of the picture is drawn from.
  * It has no words of its own, is not rotated through, and has no reference picture. */
 export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';
 export const REMIX_STEPS = 16;
+export const REMIX_DENOISE = 0.85;
 
 /** An art style or substyle by id, with its art style (none for Remix, the picture's own). */
 export function findStyle(id: string) {
@@ -526,7 +529,9 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     return rows;
   }
   rows.push({ label: 'Drawn at', value: s ? `${s.width} × ${s.height} px, ${s.steps} steps (${q.label})` : `${q.label}: ${q.size} px, ${o.style === REMIX_STYLE && !o.whole ? REMIX_STEPS : q.steps} steps` });
-  rows.push({ label: 'Follow the original', value: `${CLOSENESS.find((c) => c.value === o.closeness)?.label ?? o.closeness}${s ? `, denoise ${trim(s.denoise)}` : ''}` });
+  rows.push(o.style === REMIX_STYLE && !o.whole
+    ? { label: 'Drawn from', value: `a description of the picture, on a blank canvas: denoise ${trim(s?.denoise ?? REMIX_DENOISE)}` }
+    : { label: 'Follow the original', value: `${CLOSENESS.find((c) => c.value === o.closeness)?.label ?? o.closeness}${s ? `, denoise ${trim(s.denoise)}` : ''}` });
   if (s) {
     rows.push({ label: 'Model', value: s.model });
     rows.push({ label: 'Prompt strength', value: `guidance ${trim(s.guidance)}` });
@@ -535,6 +540,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (r.seed !== undefined) rows.push({ label: 'Seed', value: String(r.seed) });
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
+  if (s?.remix) rows.push({ label: 'Described as', value: s.remix.description });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
   if (s?.vector) rows.push({ label: 'Vector', value: `the drawing traced into ${s.vector.colors} flat color${s.vector.colors === 1 ? '' : 's'}, one SVG layer each` });
   if (s?.whole) {

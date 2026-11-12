@@ -1,13 +1,11 @@
 // What ComfyUI is asked to draw: a variation of the picture, the art style (Talari's words for it), the theme and the
 // background, in plain sentences, which FLUX reads better than tag lists.
 
-import { REMIX_STYLE, findStyle, findTheme, type RestyleOptions } from '@telios/shared';
+import { findStyle, findTheme, type RestyleOptions } from '@telios/shared';
 
 // An illustration is led by the picture, which carries what it shows: the prompt says nothing about it, and asks for a
 // variation with the picture as inspiration, so FLUX remixes it and does not copy.
 const VARIATION = 'Using the referenced image as inspiration, create a variation of it.';
-// Remix: ComfyUI is told only this (the user's wording, 2026-11-12); its ground is in the sentence
-const REMIX = 'Create a similar image inspired by the attached image with a white background.';
 
 // Drawn on white: redrawn from a picture on white, FLUX keeps its white ground whatever the prompt
 // says. A black ground is the white one cut away and filled (job.ts). When the ground is to be
@@ -42,15 +40,16 @@ export function lookWords(o: RestyleOptions): string[] {
 /** `lead` replaces the type's own opening: for Draw it whole, the model's sentence about the whole figure. That sentence
  * is written in the look already (the model is given it, to describe the character as that look would draw it), so the
  * look is not added after it: words tacked on to a description of the original did not change what was drawn.
- * Remix asks only for a similar picture inspired by it, on white; a theme and the user's own words follow it when they are given. */
-export function restylePrompt(o: RestyleOptions, key?: KeyColor, lead?: string) {
+ * `remix` is Remix's prompt: the model's close description of the picture, its ground included; a theme and the user's own words
+ * follow it when they are given. */
+export function restylePrompt(o: RestyleOptions, key?: KeyColor, lead?: string, remix?: string) {
   if (o.type === 'vector' || o.type === 'trace') throw new Error('A flat SVG is drawn by the model, and a trace made by the worker, not by ComfyUI: neither has a prompt.');
   const sentence = (s: string) => s.replace(/\s+/g, ' ').trim().replace(/([^.!?])$/, '$1.');
   const parts = [lead ? sentence(lead)
-    : o.style === REMIX_STYLE ? REMIX
+    : remix ? sentence(remix)
     : VARIATION];
   if (!lead) parts.push(...lookWords(o));
-  if (o.style === REMIX_STYLE && !lead) return parts.join(' ');
+  if (remix) return parts.join(' ');
   // with no ground chosen the picture keeps its own, and the prompt says nothing about it; a whole figure is still asked for
   // on a plain white one (it has none of its own, and is drawn from nothing)
   if (o.background !== 'original' || lead) parts.push(o.background === 'white' && !lead ? BACKGROUND : key ? KEYED(key) : lead ? BARE_WHOLE : BARE_BACKGROUND);

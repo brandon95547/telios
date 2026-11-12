@@ -16,6 +16,7 @@ import { KEY_HEX, lookWords, restylePrompt, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readWholeFigure } from './whole.ts';
 import { traceToSvg } from './trace-svg.ts';
+import { readRemix } from './remix.ts';
 import { stagesOf } from './progress.ts';
 import { getInput, rel, resultDir, updateResult } from './store.ts';
 
@@ -113,19 +114,23 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const keep = o.background === 'original';
     const byModel = !!removal && !keep;
 
+    // Remix: the model describes the picture closely and that is drawn on a blank canvas, in its own few steps whatever the quality,
+    // then traced into an SVG (Draw it whole is drawn as any whole figure)
+    const remixing = o.style === REMIX_STYLE && !o.whole;
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
+    if (remixing && !provider().provider) throw new Error('Remix needs a model, to describe the picture before it is drawn.');
     const { w, h, tw, th } = o.whole ? wholeSizes(o) : drawnSizes([meta.width!, meta.height!], o, input?.originalSize);
     const clearing = !keep && (o.background !== 'white' || byModel);
-    const byColor = clearing && !removal;
+    // a remix is not drawn on a key color (nothing of the picture is drawn from): it is asked for on white, and cleared from white
+    const byColor = clearing && !removal && !remixing;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
-    // Remix is drawn in its own few steps, whatever the quality, and what is drawn is traced into an SVG (Draw it whole is drawn as any whole figure)
-    const remixing = o.style === REMIX_STYLE && !o.whole;
     const steps = remixing ? REMIX_STEPS : quality.steps;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
       { label: 'Preparing the picture', seconds: 2 },
       ...(o.whole ? [{ label: 'Describing the whole figure', seconds: 4 }] : []),
-      ...(byModel && !o.whole ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
+      ...(remixing ? [{ label: 'Describing the picture', seconds: 6 }] : []),
+      ...(byModel && !o.whole && !remixing ? [{ label: 'Cutting the subject out', seconds: 4 }] : []),
       { label: 'Drawing', seconds: Math.round(28 * steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
@@ -143,15 +148,21 @@ export async function drawResult(id: string, signal: AbortSignal) {
       lead = (await readWholeFigure(source, signal, lookWords(o))) ?? undefined;
       if (!lead) throw new Error('Draw it whole needs the model to describe the figure, and it could not: try again.');
     }
+    let remix: string | undefined;
+    if (remixing) {
+      stage('Describing the picture');
+      remix = (await readRemix(source, signal)) ?? undefined;
+      if (!remix) throw new Error('Remix needs the model to describe the picture, and it could not: try again.');
+    }
     const warnings: string[] = [];
-    const prompt = restylePrompt(o, key ?? undefined, lead);
+    const prompt = restylePrompt(o, key ?? undefined, lead, remix);
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
     updateResult(id, (x) => { x.prompt = prompt; x.seed = seed; });
 
     // a scan's gray or yellowed paper, made white first: redrawn, it would stay gray (a picture that keeps its own
     // ground is drawn as it is)
     let ground = path.join(dir, 'source.png');
-    if (!keep) {
+    if (!keep && !remixing) {
       await python(['whiten', ground, path.join(scratch, 'white.png')]);
       ground = path.join(scratch, 'white.png');
     }
@@ -162,8 +173,8 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     let startPicture: string | Buffer = ground;
     let startCutout = false;
-    // (a whole figure is drawn from nothing, so the picture it starts from is not cut out)
-    if (byModel && !o.whole) {
+    // (a whole figure is drawn from nothing, so the picture it starts from is not cut out; a remix starts from no picture at all)
+    if (byModel && !o.whole && !remixing) {
       stage('Cutting the subject out');
       const whitened = fs.readFileSync(ground);
       const mask = await comfy().run(cutoutWorkflow(removal!), { 'picture.png': whitened }, signal);
@@ -172,7 +183,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       startCutout = on.cut;
     }
     stage('Drawing');
-    const start = await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
+    const start = remixing ? null : await sharp(startPicture).resize(w, h, { fit: 'cover' }).png().toBuffer();
     const denoise = denoiseOf(o);
 
     // a style FLUX only gets right from a picture in that style is drawn with its reference (USO
@@ -195,9 +206,10 @@ export async function drawResult(id: string, signal: AbortSignal) {
       ...(style && { styleReference: { style: o.style, weight: style.weight } }),
       ...(startCutout && { startCutout }),
       ...(o.whole && { whole: { prompt } }),
+      ...(remix && { remix: { description: remix } }),
     };
     updateResult(id, (x) => { x.settings = settings; });
-    let png = await comfy().run(restyleWorkflow(flux, { prompt, width: w, height: h, steps, denoise, seed, style }), { 'source.png': start, ...(reference && { 'style.png': reference }) }, signal);
+    let png = await comfy().run(restyleWorkflow(flux, { prompt, width: w, height: h, steps, denoise, seed, style, blank: remixing }), { ...(start && { 'source.png': start }), ...(reference && { 'style.png': reference }) }, signal);
 
     if (clearing) {
       stage('Clearing the background');
