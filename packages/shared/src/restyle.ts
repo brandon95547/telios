@@ -393,7 +393,7 @@ export interface VectorDrawing {
  * It has no words of its own, is not rotated through, and has no reference picture. */
 export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';
-export const REMIX_STEPS = 16;
+export const REMIX_STEPS = 48;
 export const REMIX_DENOISE = 1;
 
 /** An art style or substyle by id, with its art style (none for Remix, the picture's own). */

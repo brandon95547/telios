@@ -114,7 +114,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const keep = o.background === 'original';
     const byModel = !!removal && !keep;
 
-    // Remix: the model describes the picture closely and that is drawn on a blank canvas, in its own few steps whatever the quality,
+    // Remix: the model describes the picture closely and that is drawn on a blank canvas, in its own steps whatever the quality,
     // then traced into an SVG (Draw it whole is drawn as any whole figure)
     const remixing = o.style === REMIX_STYLE && !o.whole;
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
