@@ -23,26 +23,28 @@ test('Remix is a style of an illustration only, named Remix, with no words of it
   assert.deepEqual(lookWords(cleanOptions({ type: 'illustration', style: REMIX_STYLE })), [], 'no "In this style" sentence');
 });
 
-test('the sentence the picture was read as is the prompt; a theme and the user\'s words follow it', () => {
+const REMIXED = 'Using the referenced image as inspiration, create a remix of it: a black ink line drawing of a lily with three open blooms on a plain white background.';
+
+test('ComfyUI is told to remix the picture, then what it is as a drawing; a theme and the user\'s words follow', () => {
   const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE });
   assert.equal(o.background, 'original');
-  assert.equal(restylePrompt(o, undefined, undefined, READ), `${READ}.`, 'its own ground is in the sentence, and nothing is added');
+  assert.equal(restylePrompt(o, undefined, undefined, READ), REMIXED, 'its own ground is in the sentence, and nothing is added');
   const themed = cleanOptions({ type: 'illustration', style: REMIX_STYLE, theme: 'egyptian', notes: 'thin lines' });
   const p = restylePrompt(themed, undefined, undefined, READ);
-  assert.match(p, /^A black ink line drawing of a lily with three open blooms on a plain white background\. /);
+  assert.ok(p.startsWith(`${REMIXED} `), p);
   assert.match(p, /themed, with .* motifs and ornament\. thin lines\.$/);
-  assert.doesNotMatch(p, /referenced image|In this style/);
+  assert.doesNotMatch(p, /variation|In this style/);
 });
 
 test('with another ground chosen, the sentence leaves it out and the ground is asked for as for any illustration', () => {
   const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, background: 'white' });
-  assert.equal(restylePrompt(o, undefined, undefined, 'A black ink line drawing of a lily'), 'A black ink line drawing of a lily. Isolated on a plain pure white background.');
+  assert.equal(restylePrompt(o, undefined, undefined, 'A black ink line drawing of a lily'), 'Using the referenced image as inspiration, create a remix of it: a black ink line drawing of a lily. Isolated on a plain pure white background.');
 });
 
-test('not read (no model), it is asked for as a variation of the picture, and the preview says so', async () => {
+test('not read (no model), it is still asked for as a remix of the picture, and the preview says so', async () => {
   assert.equal(await readRemix(Buffer.from('not a picture'), undefined, true), null);
   const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE });
-  assert.match(restylePrompt(o), /^Using the referenced image as inspiration, create a variation of it\.$/);
+  assert.equal(restylePrompt(o), 'Using the referenced image as inspiration, create a remix of it.');
   const settings = { model: 'flux', width: 1024, height: 1024, steps: 32, denoise: 0.5, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0 };
   const unread = settingRows({ options: o, settings, seed: 1, size: [1024, 1024] } as any);
   assert.match(unread.find((r) => r.label === 'Read as')!.value, /^not read/);

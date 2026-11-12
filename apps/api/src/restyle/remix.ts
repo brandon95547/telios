@@ -5,7 +5,7 @@
 
 import { readPicture } from './read.ts';
 
-const SYSTEM = `You help an image generator redraw a picture as a new piece in the same style. Your sentence is the generator's prompt: it says what the picture is, as a drawing.
+const SYSTEM = `You help an image generator redraw a picture as a new piece in the same style. Your sentence is the generator's prompt, after "create a remix of it:": it says what the picture is, as a drawing.
 Write one sentence of 10 to 30 words, in this order: "A" or "An"; the medium and look (a black ink line drawing, a one-color silhouette, a flat color vector illustration, a watercolor painting, an engraving), with the main colors where it is in color; "of"; the subject, named as exactly as you can tell (the kind of flower, animal or object, not just "a flower"), with its main parts in a few words.
 Do not mention the picture, the image, the artist, the lighting or the camera. No quotes, nothing else.`;
 const WITH_GROUND = `End the sentence with what it is drawn on, plainly: "on a plain white background", "on a cream paper background".

@@ -114,7 +114,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           </label>
           {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
           {!options.rotateStyles && options.style === REMIX_STYLE && (health && !health.model.ok
-            ? <div className="sub warn">Remix needs the model to read each picture: {health.model.error ?? 'set one up in .env'}. Without it, it is asked for as a variation with nothing said about what it shows.</div>
+            ? <div className="sub warn">Remix needs the model to read each picture: {health.model.error ?? 'set one up in .env'}. Without it, it is asked for as a remix with nothing said about what it shows.</div>
             : <div className="sub">The model reads what each picture is (such as a black ink line drawing of a lily on white), and it is redrawn as a new piece in that same style. Balanced suits it best.</div>)}
           {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)

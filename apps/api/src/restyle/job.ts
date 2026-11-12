@@ -147,7 +147,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     if (remixing) {
       stage('Reading the picture');
       remix = (await readRemix(source, signal, keep)) ?? undefined;
-      if (!remix) warnings.push('Drawn without reading the picture (no model answered), so it was asked for as a variation of it, with nothing said about what it shows.');
+      if (!remix) warnings.push('Drawn without reading the picture (no model answered), so it was asked for as a remix of it, with nothing said about what it shows.');
     }
     const prompt = restylePrompt(o, key ?? undefined, lead, remix);
     const seed = r.seed ?? crypto.randomInt(2 ** 31);
