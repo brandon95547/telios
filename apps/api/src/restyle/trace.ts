@@ -20,11 +20,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp, { type OverlayOptions } from 'sharp';
-import { BACKGROUND_HEX, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, TRACE_MERGE, kindFor, lightnessOf } from '@telios/shared';
+import { BACKGROUND_HEX, TILE_SEAM_MAX, TILE_STRENGTH_MIN, TRACE_MAX_COLORS, kindFor, lightnessOf } from '@telios/shared';
 import type { RestyleResult, TraceTile } from '@telios/shared';
 import { python } from '../python.ts';
 import { screenCopies } from './job.ts';
 import { stagesOf } from './progress.ts';
+import { plain, traceToSvg, type Layer, type Traced } from './trace-svg.ts';
 import { rel, resultDir, updateResult } from './store.ts';
 
 /** The longest side of the preview picture: the SVG is not pixel-sized, the preview is only to look at. */
@@ -32,17 +33,12 @@ const PREVIEW_SIDE = 4096;
 /** The longest side of a pattern's fit sheet. */
 const SHEET_SIDE = 1600;
 
-interface Layer { id: string; color: string; name: string; share: number }
-interface Traced { layers: Layer[] }
 interface Tiled extends Traced {
   size: [number, number]; cell: [number, number]; tilt: number; lattice: 'grid' | 'half-drop' | 'strip'; perCell: number;
   repeatStrength: [number, number]; copies: number; seam: number;
   /** A border's background that was taken out (its color and the share of the unit it covered), or null. */
   ground?: { color: string; share: number; margins?: string[] } | null;
 }
-
-/** A worker's error in plain words: its Python type name is not for the person. */
-const plain = (e: unknown) => (e as Error).message.replace(/^\w*Error:\s*/, '');
 
 /** What a tile is laid on for its preview: the color that fills most of an opaque tile; for a border or tile whose background was taken out, the ground picked (white, black or green) or a neutral that the design shows against. */
 function previewGround(layers: Layer[], cleared: string | null): string {
@@ -77,14 +73,14 @@ export async function drawTrace(id: string, signal: AbortSignal) {
     stage(tiled ? 'Finding the repeat' : 'Tracing to SVG');
     const source = path.join(dir, 'source.png');
     let traced: Traced;
-    try {
-      // an object keeps the picture's own ground only where that was asked for
-      traced = tiled
-        ? await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : []), ...(tiled && o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000)
-        : await python<Traced>(['trace', source, scratch, '--mode', 'auto', '--max-colors', String(TRACE_MAX_COLORS), '--merge', String(TRACE_MERGE), '--smooth', String(['off', 'light', 'strong'].indexOf(o.cleanup)), ...(o.clearInside ? ['--clear-inside'] : []), ...(o.background === 'original' ? ['--keep-background'] : [])], 10 * 60_000);
-    } catch (e) {
-      throw new Error(plain(e));
-    }
+    if (tiled) {
+      try {
+        // a tile keeps the picture's own ground only where that was asked for
+        traced = await python<Tiled>(['tile', source, scratch, '--max-colors', String(TRACE_MAX_COLORS), ...(strip ? ['--border'] : []), ...(o.background === 'original' ? ['--keep-ground'] : [])], 10 * 60_000);
+      } catch (e) {
+        throw new Error(plain(e));
+      }
+    } else traced = await traceToSvg(source, scratch, o);
     if (signal.aborted) throw new Error('Stopped.');
     const svg = fs.readFileSync(path.join(scratch, 'layered.svg'));
     fs.writeFileSync(path.join(dir, 'result.svg'), svg);

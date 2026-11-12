@@ -6,7 +6,9 @@ import path from 'node:path';
 
 process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-test-'));
 
-const { REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, denoiseOf, findStyle, settingRows, styleChoices } = await import('@telios/shared');
+const { REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
+const sharp = (await import('sharp')).default;
+const { traceToSvg } = await import('../src/restyle/trace-svg.ts');
 const { cleanAnswer } = await import('../src/restyle/read.ts');
 const { lookWords, restylePrompt } = await import('../src/restyle/prompt.ts');
 
@@ -47,6 +49,27 @@ test('a remix is drawn at its own denoise: 0.6 Closely, 0.8 Balanced, 0.85 Loose
   assert.deepEqual(['close', 'balanced', 'loose'].map((c) => at(c)), [0.6, 0.8, 0.85]);
   assert.deepEqual(['close', 'balanced', 'loose'].map((c) => at(c, '')), [0.4, 0.5, 0.6]);
   assert.equal(at('balanced', REMIX_STYLE, true), WHOLE_DENOISE, 'Draw it whole is drawn from nothing');
+});
+
+test('a remix is taken as its SVG, with the drawing beside it; without an SVG (the trace failed) as the drawing', () => {
+  const options = cleanOptions({ type: 'illustration', style: REMIX_STYLE, format: 'webp' });
+  assert.deepEqual(mainFile({ options, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'webp' });
+  assert.deepEqual(mainFile({ options, files: {} }), { format: 'webp' });
+  const settings = { model: 'flux', width: 1024, height: 1024, steps: 16, denoise: 0.8, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, vector: { colors: 1 } };
+  assert.equal(settingRows({ options, settings, seed: 1 } as any).find((r) => r.label === 'Vector')!.value, 'the drawing traced into 1 flat color, one SVG layer each');
+});
+
+test('what ComfyUI drew (black ink on white) is traced into an SVG of its ink, the white cleared', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-trace-'));
+  const drawn = path.join(dir, 'result.png');
+  const ink = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="240" height="240" fill="#fff"/><circle cx="120" cy="90" r="50" fill="none" stroke="#000" stroke-width="12"/><path d="M120 140 C 110 180 140 200 120 230" fill="none" stroke="#000" stroke-width="10"/></svg>');
+  await sharp(ink).png().toFile(drawn);
+  const traced = await traceToSvg(drawn, dir, cleanOptions({ type: 'illustration', style: REMIX_STYLE, background: 'white' }));
+  const svg = fs.readFileSync(path.join(dir, 'layered.svg'), 'utf8');
+  assert.match(svg, /^<\?xml|^<svg/);
+  assert.ok(traced.layers.length >= 1, 'at least the ink');
+  assert.ok(traced.layers.some((l) => /^#[0-3]/.test(l.color)), `a dark ink layer: ${traced.layers.map((l) => l.color)}`);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('the model\'s answer is one run of prose: lines joined, quotes taken off, cut at a sentence when too long', () => {

@@ -15,6 +15,7 @@ import { cutoutWorkflow, drawSize, restyleWorkflow, upscaleWorkflow } from '../c
 import { KEY_HEX, lookWords, restylePrompt, type KeyColor } from './prompt.ts';
 import { referenceFor } from './references.ts';
 import { readWholeFigure } from './whole.ts';
+import { traceToSvg } from './trace-svg.ts';
 import { stagesOf } from './progress.ts';
 import { getInput, rel, resultDir, updateResult } from './store.ts';
 
@@ -117,8 +118,9 @@ export async function drawResult(id: string, signal: AbortSignal) {
     const clearing = !keep && (o.background !== 'white' || byModel);
     const byColor = clearing && !removal;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
-    // Remix is drawn in its own few steps, whatever the quality (Draw it whole is drawn as any whole figure)
-    const steps = o.style === REMIX_STYLE && !o.whole ? REMIX_STEPS : quality.steps;
+    // Remix is drawn in its own few steps, whatever the quality, and what is drawn is traced into an SVG (Draw it whole is drawn as any whole figure)
+    const remixing = o.style === REMIX_STYLE && !o.whole;
+    const steps = remixing ? REMIX_STEPS : quality.steps;
     // the stages this picture goes through, so the progress bar knows its way
     const stage = stagesOf(id, [
       { label: 'Preparing the picture', seconds: 2 },
@@ -127,6 +129,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       { label: 'Drawing', seconds: Math.round(28 * steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
+      ...(remixing ? [{ label: 'Tracing to SVG', seconds: 8 }] : []),
       { label: 'Finishing', seconds: 2 },
     ]);
 
@@ -237,6 +240,22 @@ export async function drawResult(id: string, signal: AbortSignal) {
     }
     fs.writeFileSync(path.join(dir, 'result.png'), png);
 
+    // a remix is wanted as a vector: what was drawn, traced into flat colors as Same picture as vector traces a picture (the drawing is
+    // kept too, and stays the result if the trace fails)
+    let svg = false;
+    if (remixing) {
+      stage('Tracing to SVG');
+      try {
+        const traced = await traceToSvg(path.join(dir, 'result.png'), scratch, o);
+        fs.copyFileSync(path.join(scratch, 'layered.svg'), path.join(dir, 'result.svg'));
+        settings.vector = { colors: traced.layers.length };
+        svg = true;
+      } catch (e) {
+        if (signal.aborted) throw e;
+        warnings.push(`The drawing could not be traced into an SVG (${(e as Error).message}), so it is kept as a picture only.`);
+      }
+    }
+
     stage('Finishing');
     await screenCopies(png, dir);
     fs.rmSync(path.join(dir, 'source.png'), { force: true });
@@ -247,7 +266,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       delete x.stage; delete x.progress;
       x.finishedAt = new Date().toISOString();
       x.size = [tw, th];
-      x.files = { png: rel(path.join(dir, 'result.png')), thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')) };
+      x.files = { png: rel(path.join(dir, 'result.png')), ...(svg && { svg: rel(path.join(dir, 'result.svg')) }), thumb: rel(path.join(dir, 'thumb.webp')), view: rel(path.join(dir, 'view.webp')), original: rel(path.join(dir, 'original.webp')) };
     });
   } catch (e) {
     const canceled = signal.aborted;

@@ -113,7 +113,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <input type="checkbox" checked={options.rotateStyles} onChange={(e) => set('rotateStyles', e.target.checked)} /> Rotate styles
           </label>
           {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
-          {!options.rotateStyles && options.style === REMIX_STYLE && <div className="sub">Each picture is redrawn as a new piece in its own style, on white, in {REMIX_STEPS} steps. Balanced suits it best.</div>}
+          {!options.rotateStyles && options.style === REMIX_STYLE && <div className="sub">Each picture is redrawn as a new piece in its own style, on white, in {REMIX_STEPS} steps, then traced into an SVG of flat colors. Balanced suits it best.</div>}
           {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>

@@ -105,6 +105,8 @@ export type MainFormat = 'package' | 'svg' | OutputFormat;
 export function mainFile(r: { options: Pick<RestyleOptions, 'type' | 'madeFor' | 'format'>; files?: { svg?: string; layout?: string } | null }): { format: MainFormat; also?: MainFormat } {
   const o = r.options;
   if (cutoutOnly(o)) return { format: o.format, also: o.format === 'webp' ? 'png' : 'webp' };
+  // a remix is drawn and then traced: its SVG, with the drawing it was traced from beside it
+  if (r.files?.svg && o.type === 'illustration') return { format: 'svg', also: o.format };
   if (r.files?.svg) return r.files.layout ? { format: 'package', also: 'svg' } : { format: 'svg' };
   return { format: o.format };
 }
@@ -285,6 +287,8 @@ export interface DrawSettings {
   cutout?: { by: 'model' | 'color' | 'none'; with?: string };
   /** The picture was redrawn from its subject cut out and put on flat white, not from the picture as it was. */
   startCutout?: boolean;
+  /** Remix: what was drawn, traced into an SVG of this many flat colors. */
+  vector?: { colors: number };
   /** Draw it whole: the sentence the model wrote about the figure full-length, which is the redraw's prompt. */
   whole?: { prompt: string };
   /** The upscaling model that enlarged it, when one did. */
@@ -532,6 +536,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
+  if (s?.vector) rows.push({ label: 'Vector', value: `the drawing traced into ${s.vector.colors} flat color${s.vector.colors === 1 ? '' : 's'}, one SVG layer each` });
   if (s?.whole) {
     rows.push({ label: 'Draw it whole', value: 'the whole figure, described by the model and drawn from that sentence alone on a taller canvas (Follow the original does not apply)' });
     rows.push({ label: 'Figure asked for', value: s.whole.prompt });
