@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, madeAs, workerOnly, findStyle, findTheme, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
+import { cleanOptions, DEFAULT_OPTIONS, drawnByModel, madeAsLine, workerOnly, type RestyleInput, type RestyleOptions, type RestyleResult } from '@telios/shared';
 import { api, restyle, type Health } from '../api.ts';
 import { AddImages, ACCEPT } from './AddImages.tsx';
 import { OptionsPanel } from './OptionsPanel.tsx';
@@ -267,7 +267,7 @@ export function Studio({ health }: { health: Health | null }) {
                         : <span className="tile-error">{r.status === 'canceled' ? 'Stopped' : r.error}</span>}
                     </button>
                     <div className="tile-name">{r.inputName}{r.options.variations > 1 ? ` · v${r.variation}` : ''}</div>
-                    <div className="tile-meta">{[madeAs(r.options), findStyle(r.options.style)?.label, findTheme(r.options.theme)?.label].filter(Boolean).join(' · ')}</div>
+                    <div className="tile-meta">{madeAsLine(r.options)}</div>
                     {r.drawing?.appReady && <div className={`tile-ready ${r.drawing.appReady.ok ? 'pass' : 'fail'}`} title={r.drawing.appReady.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join('\n')}>{r.drawing.appReady.ok ? '✓ App-ready' : `✗ Not app-ready (${r.drawing.appReady.checks.filter((c) => !c.ok).length})`}</div>}
                     {r.warning && <div className="tile-warn" title={r.warning}>{r.warning}</div>}
                     {r.files && (

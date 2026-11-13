@@ -324,7 +324,7 @@ test('a result with no fitting data says so', async () => {
 
 test('Image to new SVG (a remix the model drew) is gone: a trace is the worker\'s again; a result it drew still shows how it was drawn', async () => {
   const { cleanOptions, drawnByModel, tracedOnly, workerOnly, settingRows, GOALS } = await import('@telios/shared');
-  assert.ok(!GOALS.some((g) => g.id === 'remix'));
+  assert.equal(GOALS.find((g) => g.id === 'remix')!.type, 'illustration', 'Remix to SVG is ComfyUI\'s, not the model\'s');
   const o = cleanOptions({ type: 'trace', madeFor: 'remix' });
   assert.equal(o.madeFor, 'object', 'a remix asked for again is traced as the picture');
   assert.ok(!drawnByModel(o) && tracedOnly(o) && workerOnly(o));

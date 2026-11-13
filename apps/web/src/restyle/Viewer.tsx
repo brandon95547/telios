@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { madeAs, tracedOnly, cutoutOnly, findStyle, findTheme, settingRows, type RestyleResult } from '@telios/shared';
+import { madeAsLine, tracedOnly, cutoutOnly, settingRows, type RestyleResult } from '@telios/shared';
 import { api } from '../api.ts';
 import { Download } from './Download.tsx';
 import { PromptDialog } from './PromptDialog.tsx';
@@ -34,7 +34,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} /> Keep
           </label>
           <b className="viewer-name">{r.inputName}{o.variations > 1 ? ` · version ${r.variation}` : ''}</b>
-          <span className="sub">{[madeAs(o), findStyle(o.style)?.label, findTheme(o.theme)?.label].filter(Boolean).join(' · ')}{r.size ? ` · ${r.size[0]} × ${r.size[1]}` : ''}</span>
+          <span className="sub">{madeAsLine(o)}{r.size ? ` · ${r.size[0]} × ${r.size[1]}` : ''}</span>
           <span className="spacer" />
           <span className="sub">{index + 1} of {results.length}</span>
           <button type="button" className="quiet" onClick={onClose} aria-label="Close">✕</button>

@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalPicker } from './GoalPicker.tsx';
 
@@ -35,7 +35,8 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
   const choose = (g: Goal) => {
     set('type', g.type);
     set('madeFor', g.madeFor);
-    set('style', '');
+    // Remix to SVG is the illustration in the picture's own style; every other result starts with none
+    set('style', g.style ?? '');
     set('rotateStyles', false);
     set('theme', '');
     if (g.type !== 'illustration') set('whole', false);
@@ -49,7 +50,8 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
   const keepGround = options.background === 'original';
   // Remix draws from its own description of the picture, so Draw it whole (which describes a whole figure) is not offered with it
-  const remixing = illustration && options.style === REMIX_STYLE && !options.rotateStyles;
+  // Remix to SVG: drawn from the model's description, so it has no art style, no Follow the original and no Draw it whole
+  const remixing = goal.id === 'remix';
   return (
     <>
       <section className="panel-section">
@@ -66,6 +68,9 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
 
       <section className="panel-section">
         <h2><span className="step">3</span> Adjust</h2>
+        {remixing && (health && !health.model.ok
+          ? <div className="sub warn">Remix to SVG needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
+          : <div className="sub">Drawn on a blank canvas from the model\u2019s description of each picture (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), then traced into an SVG of flat colors.</div>)}
         {(cutout || (traced && goal.id === 'vector')) && (
           <label className="field">
             <div className="label">Clean up</div>
@@ -104,14 +109,10 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <div className="sub">{TARGETS.find((t) => t.value === options.madeFor)?.hint}{options.madeFor === 'auto' ? '' : ' It is drawn that way and checked for it.'} Every drawing is measured for an app (nothing cut off, a clear ground, lines that hold, few colors).</div>
           </label>
         )}
-        {illustration && <label className="field">
+        {illustration && !remixing && <label className="field">
           <div className="label">Illustration style</div>
-          <select value={options.style} disabled={options.rotateStyles} onChange={(e) => {
-            set('style', e.target.value);
-            if (e.target.value === REMIX_STYLE) set('whole', false);
-          }}>
+          <select value={options.style} disabled={options.rotateStyles} onChange={(e) => set('style', e.target.value)}>
             <option value="">{options.rotateStyles ? 'Rotating through them' : 'None selected'}</option>
-            <option value={REMIX_STYLE}>{REMIX_STYLE_LABEL} (the picture's own style)</option>
             {CATALOG.artStyles.filter((a) => styleFits(options.type, a.id)).map((a) => (
               <optgroup key={a.id} label={a.label}>
                 <option value={a.id}>{a.label}</option>
@@ -123,9 +124,6 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             <input type="checkbox" checked={options.rotateStyles} onChange={(e) => set('rotateStyles', e.target.checked)} /> Rotate styles
           </label>
           {options.rotateStyles && <div className="sub">The first picture is drawn in {findStyle(styleChoices(options.type)[0])?.label}, the next in {findStyle(styleChoices(options.type)[1])?.label}, and so on down the list ({styleChoices(options.type).length} styles), then from the first again. The style chosen above is not used.</div>}
-          {!options.rotateStyles && options.style === REMIX_STYLE && (health && !health.model.ok
-            ? <div className="sub warn">Remix needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
-            : <div className="sub">The model describes each picture closely, and that description is drawn as a new piece on a blank canvas (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), then traced into an SVG of flat colors.</div>)}
           {!options.rotateStyles && wantsStyleReference(options) && health && (
             health.comfy.styleReference && health.styleReferences.includes(options.style)
               ? <div className="sub">Drawn with a reference picture of this style, so its look comes out true.</div>

@@ -23,7 +23,7 @@ test('what is saved of a result is what the server answers with when no format i
 });
 
 test('each kind of result has one main file, and at most one other form beside it', async () => {
-  const { mainFile, GOALS, goalOf, madeAs } = await import('@telios/shared');
+  const { mainFile, GOALS, goalOf, madeAs, madeAsLine } = await import('@telios/shared');
   const svg = { svg: 'x' };
   assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'object', format: 'png' }, files: svg }), { format: 'svg' });
   assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'border', format: 'png' }, files: { ...svg, layout: 'x' } }), { format: 'package', also: 'svg' });
@@ -31,11 +31,18 @@ test('each kind of result has one main file, and at most one other form beside i
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp', also: 'png' });
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'png' }, files: {} }), { format: 'png', also: 'webp' });
   assert.deepEqual(mainFile({ options: { type: 'illustration', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp' });
-  // five results, named as what goes in and what comes out (Image to new SVG, the model's remix, removed 2026-11-13)
+  // six results, three to a group, named as what goes in and what comes out (Image to new SVG, the model's remix, removed 2026-11-13;
+  // Remix to SVG is ComfyUI's)
   assert.deepEqual(GOALS.map((g) => [g.group, g.label]), [
     ['copy', 'Image to SVG'], ['copy', 'Image to transparent PNG'], ['copy', 'Pattern to repeating SVG'],
-    ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
+    ['new', 'Remix to SVG'], ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
   ]);
+  // an illustration in the picture's own style is Remix to SVG, in any other Image to new art style; its line does not name Remix twice
+  assert.equal(goalOf({ type: 'illustration', madeFor: 'auto', style: 'remix' })!.id, 'remix');
+  assert.equal(goalOf({ type: 'illustration', madeFor: 'auto', style: 'art-deco' })!.id, 'illustration');
+  assert.equal(goalOf({ type: 'illustration', madeFor: 'auto', style: '' })!.id, 'illustration');
+  assert.equal(madeAsLine({ type: 'illustration', style: 'remix', theme: '' }), 'Remix to SVG');
+  assert.match(madeAsLine({ type: 'illustration', style: 'art-deco', theme: '' }), /^Image to new art style · Art Deco/);
   // a pattern tile and a border strip are one result, Pattern to repeating SVG, found or said
   for (const madeFor of ['repeat', 'pattern', 'border']) assert.equal(goalOf({ type: 'trace', madeFor })!.id, 'repeat', madeFor);
   assert.equal(madeAs({ type: 'trace', madeFor: 'border' }), 'Pattern to repeating SVG');

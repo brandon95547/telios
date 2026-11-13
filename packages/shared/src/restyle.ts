@@ -72,6 +72,18 @@ export const REPEATS: { value: typeof REPEAT | 'pattern' | 'border'; label: stri
   { value: 'border', label: 'In one direction', hint: 'A border: one strip that repeats along its length.' },
 ];
 
+/** Remix (Remix to SVG), an illustration's style that is not one of Talari's but the picture's own: the model describes the picture closely, and
+ * that paragraph is drawn on a blank canvas, without the picture, at REMIX_DENOISE in REMIX_STEPS steps whatever the quality (the
+ * user's recipe from the ComfyUI test bench, 2026-11-12), so each picture comes back as a new piece of its own kind, in its own style,
+ * not a copy of it. Follow the original does not apply: nothing of the picture is drawn from. At 0.85 the blank canvas's leftover
+ * gray came back as a photo of a sketchbook or a smoky gray backdrop; at 1 the ground is the plain white the description asks for
+ * (and a white start canvas, tried too, shrank the design to a speck).
+ * It has no words of its own, is not rotated through, and has no reference picture. */
+export const REMIX_STYLE = 'remix';
+export const REMIX_STYLE_LABEL = 'Remix';
+export const REMIX_STEPS = 48;
+export const REMIX_DENOISE = 1;
+
 /** What a person asks for, in their words. Each goal is one way of using the tool, and says what it gives, how long it takes and what it costs;
  * the type and "made for" it sets are how the tool does it. The Choose step lists these, not the types. */
 export interface Goal {
@@ -87,6 +99,8 @@ export interface Goal {
   madeFor: Target | typeof REPEAT;
   /** Other "made for"s it covers: Pattern to repeating SVG is the pattern and the border it finds. */
   alsoFor?: string[];
+  /** The illustration style it draws in: Remix to SVG is the illustration in the picture's own style (REMIX_STYLE). */
+  style?: string;
 }
 export const GOAL_GROUPS = { copy: 'Copy what is there', new: 'Make something new' } as const;
 // Named as what goes in and what comes out (the user's names, 2026-11-12), three to a group
@@ -94,14 +108,21 @@ export const GOALS: Goal[] = [
   { id: 'vector', group: 'copy', label: 'Image to SVG', line: 'Your picture traced as it is, one layer per flat color: its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
   { id: 'cutout', group: 'copy', label: 'Image to transparent PNG', line: 'The object lifted off its plain background, set level and cleaned up, as a transparent PNG or WebP.', gives: 'PNG or WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
   { id: 'repeat', group: 'copy', label: 'Pattern to repeating SVG', line: 'One tile or strip that repeats seamlessly, across and down for a pattern or in one direction for a border.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: REPEAT, alsoFor: ['pattern', 'border'] },
+  { id: 'remix', group: 'new', label: 'Remix to SVG', line: 'A new piece in your picture\u2019s own style: the model describes the picture, ComfyUI draws that on white, and the drawing is traced to SVG.', gives: 'SVG', speed: 'A few minutes', cost: 'Under 1\u00a2 each', type: 'illustration', madeFor: 'auto', style: REMIX_STYLE },
   { id: 'flat', group: 'new', label: 'Image to page-ready SVG', line: 'Clean flat art for a frame, border, corner or ornament that fits any page size, with the data an app needs.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
   { id: 'illustration', group: 'new', label: 'Image to new art style', line: 'Your picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
 ];
 /** The goal a result or the chosen options come from; a result made before the types were dropped has none. */
-export const goalOf = (o: { type: OutputType | string; madeFor?: string }): Goal | undefined =>
-  GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor || !!g.alsoFor?.includes(o.madeFor ?? '') : true));
+export const goalOf = (o: { type: OutputType | string; madeFor?: string; style?: string }): Goal | undefined =>
+  GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor || !!g.alsoFor?.includes(o.madeFor ?? '')
+    // an illustration in the picture's own style is Remix to SVG; in any other, Image to new art style
+    : g.type === 'illustration' ? (g.style === REMIX_STYLE) === (o.style === REMIX_STYLE) : true));
 /** A short name for what a result was made as, for its tile. */
-export const madeAs = (o: { type: OutputType | string; madeFor?: string }) => goalOf(o)?.label ?? typeInfo(o.type).label;
+export const madeAs = (o: { type: OutputType | string; madeFor?: string; style?: string }) => goalOf(o)?.label ?? typeInfo(o.type).label;
+/** A result's line on its tile and in the viewer: what it was made as, its art style (unless that is what it was made as: Remix to SVG)
+ * and its theme. */
+export const madeAsLine = (o: { type: OutputType | string; madeFor?: string; style?: string; theme?: string }) =>
+  [madeAs(o), goalOf(o)?.style ? undefined : findStyle(o.style ?? '')?.label, findTheme(o.theme ?? '')?.label].filter(Boolean).join(' \u00b7 ');
 
 /** The one file a result is taken as, and the one other form worth a small link beside it. A vector comes as its SVG (as the app package where it has
  * fitting data: a frame, border, corner or tile); a cutout as WebP (or PNG); an illustration as the format it was made in. A vector's preview
@@ -389,17 +410,6 @@ export interface VectorDrawing {
   summary: string;
 }
 
-/** Remix, an illustration's style that is not one of Talari's but the picture's own: the model describes the picture closely, and
- * that paragraph is drawn on a blank canvas, without the picture, at REMIX_DENOISE in REMIX_STEPS steps whatever the quality (the
- * user's recipe from the ComfyUI test bench, 2026-11-12), so each picture comes back as a new piece of its own kind, in its own style,
- * not a copy of it. Follow the original does not apply: nothing of the picture is drawn from. At 0.85 the blank canvas's leftover
- * gray came back as a photo of a sketchbook or a smoky gray backdrop; at 1 the ground is the plain white the description asks for
- * (and a white start canvas, tried too, shrank the design to a speck).
- * It has no words of its own, is not rotated through, and has no reference picture. */
-export const REMIX_STYLE = 'remix';
-export const REMIX_STYLE_LABEL = 'Remix';
-export const REMIX_STEPS = 48;
-export const REMIX_DENOISE = 1;
 
 /** An art style or substyle by id, with its art style (none for Remix, the picture's own). */
 export function findStyle(id: string) {
