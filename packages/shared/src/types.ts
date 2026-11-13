@@ -161,7 +161,7 @@ export interface Run {
   startedAt?: string;
   finishedAt?: string;
   /** model: the provider and model of a re-illustration ('' for Rebuild and Trace). */
-  options: { maxRenders: number; model: string; effort: string; note?: string; /** Fine lines kept: the lines-that-hold check reports them but does not send the drawing back (Detailed). */ fineLines?: boolean };
+  options: { maxRenders: number; model: string; effort: string; note?: string };
   reading: Reading;
   iterations: Iteration[];
   usage: Usage;

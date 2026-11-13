@@ -46,33 +46,11 @@ const RETIRED: Record<string, Pick<OutputTypeInfo, 'label' | 'vector'>> = {
   render3d: { label: '3D illustration', vector: false },
 };
 
-/** Remix, a trace's fourth target: not the picture's own shapes but a new drawing inspired by it (same subject, style and colors, different
- * shapes), so a batch of butterflies comes back as a batch of new butterflies. A model writes it, as for a flat SVG, and it costs the same. */
-export const REMIX = 'remix';
-export const REMIX_TARGET = { value: REMIX, label: 'Inspired by (Remix)', hint: 'A new drawing inspired by the picture: the same subject, style and colors, but its own shapes, so a batch of butterflies comes back as a batch of new butterflies. A model draws each one, as a flat SVG, and costs the same.' } as const;
-/** What the model is told for a remix. */
-/** How much of the original's detail Image to new SVG keeps (the user, 2026-11-12). Simple holds to the app-ready rule that every line
- * stays visible at tile and phone size, which thickens or leaves out fine detail; Detailed keeps the original's density, fine lines
- * included, with more renders to get there (it may lose its finest lines when placed very small). */
-export type Detail = 'simple' | 'detailed';
-export const DETAILS: { value: Detail; label: string; hint: string }[] = [
-  { value: 'detailed', label: 'Detailed', hint: 'Keeps the original\u2019s density, fine lines included, in up to 14 renders: about twice the time and cost. The finest lines may not show when it is placed very small.' },
-  { value: 'simple', label: 'Simple', hint: 'Every line thick enough to show at tile and phone size: fine detail is thickened or left out. Up to 8 renders.' },
-];
-/** The renders a detailed drawing may take (a simple one takes the server's own, TELIOS_MAX_RENDERS). */
-export const DETAILED_RENDERS = 14;
-/** What the model is told for a detailed drawing. */
-export const DETAIL_BRIEF = 'Detail: keep the original\u2019s full density. Draw every motif, marking, vein, hatch and fine line it has, at its own weight: do not simplify, merge or leave anything out. Fine lines are welcome here: the lines-that-hold rule does not apply to this drawing.';
-/** Whether a result is drawn detailed: Image to new SVG, with Detailed chosen. */
-export const isDetailed = (o: { madeFor?: string; detail?: Detail }) => o.madeFor === REMIX && o.detail === 'detailed';
-
-export const REMIX_BRIEF = 'Draw a new piece inspired by this one, not a copy of it: the same kind of subject, the same art style, line weight and color palette, but its own pose, proportions, markings and details, so that placed beside the original it is clearly another piece of the same family. Do not reproduce the original’s outlines.';
-
-/** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI. */
-export const drawnByModel = (o: { type: OutputType; madeFor?: string }) => o.type === 'vector' || (o.type === 'trace' && o.madeFor === REMIX);
+/** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI: Image to page-ready SVG. */
+export const drawnByModel = (o: { type: OutputType }) => o.type === 'vector';
 
 /** Whether the picture is traced as it is (the worker's trace), not redrawn by ComfyUI or a model. */
-export const tracedOnly = (o: { type: OutputType; madeFor?: string }) => o.type === 'trace' && o.madeFor !== REMIX;
+export const tracedOnly = (o: { type: OutputType }) => o.type === 'trace';
 
 /** Whether the picture is lifted off its background as it is (the worker's cutout): a transparent picture, no SVG. */
 export const cutoutOnly = (o: { type: OutputType }) => o.type === 'cutout';
@@ -106,7 +84,7 @@ export interface Goal {
   speed: string;
   cost: string;
   type: OutputType;
-  madeFor: Target | typeof REMIX | typeof REPEAT;
+  madeFor: Target | typeof REPEAT;
   /** Other "made for"s it covers: Pattern to repeating SVG is the pattern and the border it finds. */
   alsoFor?: string[];
 }
@@ -116,7 +94,6 @@ export const GOALS: Goal[] = [
   { id: 'vector', group: 'copy', label: 'Image to SVG', line: 'Your picture traced as it is, one layer per flat color: its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
   { id: 'cutout', group: 'copy', label: 'Image to transparent PNG', line: 'The object lifted off its plain background, set level and cleaned up, as a transparent PNG or WebP.', gives: 'PNG or WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
   { id: 'repeat', group: 'copy', label: 'Pattern to repeating SVG', line: 'One tile or strip that repeats seamlessly, across and down for a pattern or in one direction for a border.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: REPEAT, alsoFor: ['pattern', 'border'] },
-  { id: 'remix', group: 'new', label: 'Image to new SVG', line: 'A new design in the same style, with its own shapes: a batch of butterflies comes back as new butterflies.', gives: 'SVG', speed: 'Minutes', cost: 'A few cents each', type: 'trace', madeFor: REMIX },
   { id: 'flat', group: 'new', label: 'Image to page-ready SVG', line: 'Clean flat art for a frame, border, corner or ornament that fits any page size, with the data an app needs.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
   { id: 'illustration', group: 'new', label: 'Image to new art style', line: 'Your picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
 ];
@@ -251,14 +228,12 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
-  /** Image to new SVG: how much of the original's detail it keeps. */
-  detail: Detail;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for illustrations. */
   whole: boolean;
   /** The shape of the canvas a whole figure is drawn on. */
   ratio: Ratio;
   /** A flat SVG: what it is made for (a frame, a border, a corner, a pattern, an object), which decides how it is drawn and what it must pass. */
-  madeFor: Target | typeof REMIX | typeof REPEAT;
+  madeFor: Target | typeof REPEAT;
   /** A trace made for an object: how far its edges are evened out. */
   cleanup: CleanUp;
   /** A trace of color art on a plain ground leaves the large stretches of ground inside the design clear (between its vines and leaves), not filled. */
@@ -267,7 +242,7 @@ export interface RestyleOptions {
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', detail: 'detailed', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -486,7 +461,6 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.enhance = raw?.enhance === true;
   if (!cutoutOnly(o)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
-  o.detail = pick(raw?.detail, DETAILS.map((d) => d.value), o.detail);
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   // a remix draws from its own description of the picture, which Draw it whole's would replace
@@ -495,11 +469,10 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
   o.clearInside = raw?.clearInside !== false;
   o.madeFor = o.type === 'vector' ? pick(raw?.madeFor, TARGETS.map((t) => t.value), 'auto')
-    : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REMIX, REPEAT], 'object') : 'auto';
-  // a trace and a cutout are the same every time: one version (a remix is a new drawing each time, so it may have several)
+    : o.type === 'trace' ? pick(raw?.madeFor, [...TRACE_TARGETS.map((t) => t.value), REPEAT], 'object') : 'auto';
+  // a trace and a cutout are the same every time: one version
   if (workerOnly(o)) o.variations = 1;
-  // a remix is drawn by a model, which has no theme; a vector (flat SVG or remix) is shown on a checkerboard and has no background to choose
-  if (o.madeFor === REMIX) o.theme = '';
+  // a flat SVG is shown on a checkerboard and has no background to choose
   if (drawnByModel(o)) o.background = 'transparent';
   return o;
 }
@@ -517,19 +490,18 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   const s = r.settings;
   const q = qualityOf(o);
   const rows: SettingRow[] = [];
-  if (drawnByModel(o)) {
+  // (a result the model drew before Image to new SVG was removed, 2026-11-13, is a trace by its options, and still told as drawn)
+  if (drawnByModel(o) || r.drawing) {
     const d = r.drawing;
     if (d) {
       rows.push({ label: 'Drawn by', value: d.model });
-      if (o.madeFor === REMIX) rows.push({ label: 'Detail', value: isDetailed(o) ? 'Detailed: the original\u2019s density, fine lines kept' : 'Simple: every line thick enough to show small' });
       rows.push({ label: 'Renders', value: `${d.renders} of ${d.maxRenders} allowed` });
       // a model with no known price (a local or custom one) has no cost to show
       if (d.costUsd > 0) rows.push({ label: 'Cost', value: d.costUsd < 0.005 ? 'under 1¢' : `about ${(d.costUsd * 100).toFixed(d.costUsd < 0.1 ? 1 : 0)}¢` });
       rows.push({ label: 'Read as', value: `${d.kind}, ${COLOR_RULE_WORDS[d.colorMode] ?? d.colorMode}` });
       if (d.appReady) rows.push({ label: 'App-ready', value: d.appReady.ok ? `yes, all ${d.appReady.checks.length} checks pass` : `no: ${d.appReady.checks.filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(', ')}` });
     }
-    if (o.madeFor === REMIX) rows.push({ label: 'Made as', value: REMIX_TARGET.label });
-    else if (o.madeFor !== 'auto') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
+    if (o.madeFor !== 'auto' && (o.madeFor as string) !== 'remix') rows.push({ label: 'Made for', value: TARGETS.find((t) => t.value === o.madeFor)?.label ?? o.madeFor });
     rows.push({ label: 'Background', value: BACKGROUND_LABEL[o.background] });
     if (r.size) rows.push({ label: 'Preview', value: `${o.format.toUpperCase()}, ${r.size[0]} × ${r.size[1]} px; the SVG is not pixel-sized` });
     return rows;

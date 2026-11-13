@@ -26,18 +26,16 @@ test('each kind of result has one main file, and at most one other form beside i
   const { mainFile, GOALS, goalOf, madeAs } = await import('@telios/shared');
   const svg = { svg: 'x' };
   assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'object', format: 'png' }, files: svg }), { format: 'svg' });
-  assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'remix', format: 'png' }, files: svg }), { format: 'svg' });
   assert.deepEqual(mainFile({ options: { type: 'trace', madeFor: 'border', format: 'png' }, files: { ...svg, layout: 'x' } }), { format: 'package', also: 'svg' });
   assert.deepEqual(mainFile({ options: { type: 'vector', madeFor: 'frame', format: 'png' }, files: { ...svg, layout: 'x' } }), { format: 'package', also: 'svg' });
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp', also: 'png' });
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'png' }, files: {} }), { format: 'png', also: 'webp' });
   assert.deepEqual(mainFile({ options: { type: 'illustration', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp' });
-  // six results, three to a group, named as what goes in and what comes out
+  // five results, named as what goes in and what comes out (Image to new SVG, the model's remix, removed 2026-11-13)
   assert.deepEqual(GOALS.map((g) => [g.group, g.label]), [
     ['copy', 'Image to SVG'], ['copy', 'Image to transparent PNG'], ['copy', 'Pattern to repeating SVG'],
-    ['new', 'Image to new SVG'], ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
+    ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
   ]);
-  assert.equal(goalOf({ type: 'trace', madeFor: 'remix' })!.id, 'remix');
   // a pattern tile and a border strip are one result, Pattern to repeating SVG, found or said
   for (const madeFor of ['repeat', 'pattern', 'border']) assert.equal(goalOf({ type: 'trace', madeFor })!.id, 'repeat', madeFor);
   assert.equal(madeAs({ type: 'trace', madeFor: 'border' }), 'Pattern to repeating SVG');

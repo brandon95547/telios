@@ -305,11 +305,9 @@ export async function thinShare(svg: string, long = 800, width = 2): Promise<num
 /** At most this share of a piece's ink may be thinner than two pixels when it is drawn 800 pixels across. */
 export const THIN_LIMIT = 0.12;
 
-/** With `fineLines` (a detailed drawing) fine lines are kept: the share is reported, and passes. */
-async function thinCheck(svg: string, fineLines = false): Promise<AppCheck> {
+async function thinCheck(svg: string): Promise<AppCheck> {
   const label = 'Lines hold at small size';
   const share = await thinShare(svg);
-  if (fineLines) return { id: 'thin', label, ok: true, detail: `${pct(share)} of the ink is thinner than 0.25% of the canvas, kept as Detailed asks: the finest lines may not show at tile and phone size` };
   return share > THIN_LIMIT
     ? { id: 'thin', label, ok: false, detail: `${pct(share)} of the ink is thinner than 0.25% of the canvas (2 pixels when it is drawn 800 across): hairlines vanish at tile and phone size. Draw lines at least ${(Math.max(...sizeOf(svg)) * 0.0025).toFixed(1)} units wide and give detail more weight.` }
     : { id: 'thin', label, ok: true, detail: `${pct(share)} of the ink is that thin (at most ${pct(THIN_LIMIT)})` };
@@ -335,7 +333,7 @@ export function sizeCheck(bytes: number): AppCheck {
 // ── The report ──
 
 /** Every check the piece's kind asks for, measured on its SVG. `off` is the share of flat area outside the palette, when already known. */
-export async function appReady(svg: string, layout: Layout | null, palette: PaletteColor[], reading: Reading, off: { share: number; colors: string[] } = { share: 0, colors: [] }, { fineLines = false } = {}): Promise<AppReport> {
+export async function appReady(svg: string, layout: Layout | null, palette: PaletteColor[], reading: Reading, off: { share: number; colors: string[] } = { share: 0, colors: [] }): Promise<AppReport> {
   const piece = classOf(reading.kind);
   const size = sizeOf(svg);
   const checks: AppCheck[] = [layoutCheck(layout, size, reading)];
@@ -346,7 +344,7 @@ export async function appReady(svg: string, layout: Layout | null, palette: Pale
     if (seam) checks.push(seam);
   }
   if (piece === 'frame') checks.push(await windowCheck(svg));
-  checks.push(await thinCheck(svg, fineLines), paletteCheck(palette, off, piece));
+  checks.push(await thinCheck(svg), paletteCheck(palette, off, piece));
   checks.push(await backgroundCheck(svg));
   return { piece, ok: reportOk(checks), checks };
 }

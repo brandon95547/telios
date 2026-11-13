@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, DETAILS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalPicker } from './GoalPicker.tsx';
 
@@ -39,7 +39,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
     set('rotateStyles', false);
     set('theme', '');
     if (g.type !== 'illustration') set('whole', false);
-    if (g.type !== 'illustration' && g.type !== 'vector' && g.madeFor !== 'remix') set('variations', 1);
+    if (g.type !== 'illustration' && g.type !== 'vector') set('variations', 1);
     // what each kind of result is on: a cutout, a vector and a pattern tile or border have no ground of their own to keep
     if (g.type !== 'illustration' && !(g.type === 'trace' && g.madeFor === 'object')) set('background', 'transparent');
     set('format', g.type === 'cutout' ? 'webp' : options.format === 'jpeg' || cutoutOnly(options) ? 'png' : options.format);
@@ -66,13 +66,6 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
 
       <section className="panel-section">
         <h2><span className="step">3</span> Adjust</h2>
-        {goal.id === 'remix' && (
-          <div className="field">
-            <div className="label">Detail</div>
-            <Seg label="Detail" value={options.detail} onChange={(v) => set('detail', v)} options={DETAILS.map((d) => ({ value: d.value, label: d.label }))} />
-            <div className="sub">{DETAILS.find((d) => d.value === options.detail)?.hint}</div>
-          </div>
-        )}
         {(cutout || (traced && goal.id === 'vector')) && (
           <label className="field">
             <div className="label">Clean up</div>
@@ -171,7 +164,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
             </label>}
           </div>
         )}
-        {(illustration || goal.id === 'remix' || goal.id === 'flat') && <div className="field">
+        {(illustration || goal.id === 'flat') && <div className="field">
           <div className="label">Versions of each picture</div>
           <Seg label="Versions of each picture" value={options.variations} onChange={(v) => set('variations', v)} options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))} />
           {byModel && <div className="sub">Each version is a separate drawing, and costs what one does.</div>}

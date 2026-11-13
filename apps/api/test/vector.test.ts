@@ -89,29 +89,6 @@ function finishes(seen: Record<string, unknown> = {}, cost = 0.0421) {
 
 const designsOf = (resultId: string) => listDesigns().filter((d) => d.fromResult === resultId);
 
-test('Image to new SVG is Detailed unless Simple is chosen: told to keep the density, given 14 renders and fine lines; Simple and page-ready SVG keep the rules', async () => {
-  const { DETAIL_BRIEF, DETAILED_RENDERS, MAX_RENDERS_FOR_TEST } = { ...(await import('@telios/shared')), MAX_RENDERS_FOR_TEST: (await import('../src/config.ts')).MAX_RENDERS };
-  assert.equal(DEFAULT_OPTIONS.detail, 'detailed', 'Detailed is the starting choice');
-  const drawn = async (id: string, over: Record<string, unknown>) => {
-    await makeResult(id, over);
-    await drawVector(id, new AbortController().signal, { read, draw: finishes() });
-    const r = getResult(id)!;
-    assert.equal(r.status, 'done');
-    return getRun(r.drawing!.runId)!.options as Record<string, any>;
-  };
-  const detailed = await drawn('xdet1', { type: 'trace', madeFor: 'remix' });
-  assert.ok(detailed.note.includes(DETAIL_BRIEF), detailed.note);
-  assert.equal(detailed.maxRenders, DETAILED_RENDERS);
-  assert.equal(detailed.fineLines, true);
-  const simple = await drawn('xdet2', { type: 'trace', madeFor: 'remix', detail: 'simple' });
-  assert.ok(!simple.note.includes(DETAIL_BRIEF));
-  assert.equal(simple.maxRenders, MAX_RENDERS_FOR_TEST);
-  assert.equal(simple.fineLines, undefined);
-  const page = await drawn('xdet3', { type: 'vector', madeFor: 'frame', detail: 'detailed' });
-  assert.ok(!(page.note ?? '').includes(DETAIL_BRIEF), 'page-ready SVG keeps the rules');
-  assert.equal(page.fineLines, undefined);
-});
-
 test('a flat SVG result gets the SVG, its fitting data and a preview, and its design stays out of the library', async () => {
   await makeResult('xvec1');
   const seen: Record<string, unknown> = {};
@@ -345,18 +322,15 @@ test('a result with no fitting data says so', async () => {
   removeResult('xvec8');
 });
 
-test('Remix is a trace target that a model draws: several versions, no theme, no kept ground, and the model is told to make a new piece', async () => {
-  const { cleanOptions, drawnByModel, tracedOnly, workerOnly, settingRows, REMIX_BRIEF } = await import('@telios/shared');
-  const o = cleanOptions({ type: 'trace', madeFor: 'remix', variations: 3, theme: 'celtic', background: 'original' });
-  assert.equal(o.type, 'trace');
-  assert.equal(o.madeFor, 'remix');
-  assert.equal(o.variations, 3);
-  assert.equal(o.theme, '');
-  assert.equal(o.background, 'transparent');
-  assert.ok(drawnByModel(o) && !tracedOnly(o) && !workerOnly(o));
-  assert.ok(workerOnly(cleanOptions({ type: 'trace', madeFor: 'object' })), 'the other trace targets stay with the worker');
-  assert.equal(cleanOptions({ type: 'vector', madeFor: 'remix' }).madeFor, 'auto', 'only a trace has Remix');
-  assert.match(REMIX_BRIEF, /not a copy/);
-  const rows = Object.fromEntries(settingRows({ options: o, settings: undefined, seed: 1, size: [10, 10], drawing: undefined } as any).map((x: any) => [x.label, x.value]));
-  assert.equal(rows['Made as'], 'Inspired by (Remix)');
+test('Image to new SVG (a remix the model drew) is gone: a trace is the worker\'s again; a result it drew still shows how it was drawn', async () => {
+  const { cleanOptions, drawnByModel, tracedOnly, workerOnly, settingRows, GOALS } = await import('@telios/shared');
+  assert.ok(!GOALS.some((g) => g.id === 'remix'));
+  const o = cleanOptions({ type: 'trace', madeFor: 'remix' });
+  assert.equal(o.madeFor, 'object', 'a remix asked for again is traced as the picture');
+  assert.ok(!drawnByModel(o) && tracedOnly(o) && workerOnly(o));
+  const old = { options: { ...o, madeFor: 'remix' }, settings: undefined, seed: 1, size: [10, 10],
+    drawing: { runId: 'r', model: 'DeepSeek deepseek-flash', renders: 3, maxRenders: 8, costUsd: 0.03, kind: 'ornament', colorMode: 'one-ink', summary: 's' } };
+  const rows = Object.fromEntries(settingRows(old as any).map((x: any) => [x.label, x.value]));
+  assert.equal(rows['Drawn by'], 'DeepSeek deepseek-flash');
+  assert.equal(rows['Renders'], '3 of 8 allowed');
 });
