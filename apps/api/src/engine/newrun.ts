@@ -6,7 +6,7 @@ import { DRAW_EFFORT, MAX_RENDERS } from '../config.ts';
 import { appendEvent, runIdFor, saveRun, updateDesign } from '../store.ts';
 import { provider } from './llm.ts';
 
-export function newRun(d: Design, mode: RunMode, { maxRenders, note }: { maxRenders?: number; note?: string } = {}): Run {
+export function newRun(d: Design, mode: RunMode, { maxRenders, note, fineLines }: { maxRenders?: number; note?: string; fineLines?: boolean } = {}): Run {
   if (!d.reading) throw new Error('The design has not been read yet.');
   const model = mode === 'reillustrate' ? provider().provider : null;
   if (mode === 'reillustrate' && !model) throw new Error(provider().error);
@@ -17,7 +17,7 @@ export function newRun(d: Design, mode: RunMode, { maxRenders, note }: { maxRend
     status: 'queued',
     stage: 'queued',
     createdAt: new Date().toISOString(),
-    options: { maxRenders: Math.max(2, Math.min(20, Number(maxRenders) || MAX_RENDERS)), model: model ? `${model.label} ${model.model}` : '', effort: DRAW_EFFORT, ...(note && { note }) },
+    options: { maxRenders: Math.max(2, Math.min(20, Number(maxRenders) || MAX_RENDERS)), model: model ? `${model.label} ${model.model}` : '', effort: DRAW_EFFORT, ...(note && { note }), ...(fineLines && { fineLines }) },
     reading: d.reading,
     iterations: [],
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 },

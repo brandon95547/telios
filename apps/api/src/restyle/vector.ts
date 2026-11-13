@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, REMIX, REMIX_BRIEF, classOf, kindFor } from '@telios/shared';
+import { BACKGROUND_HEX, DETAIL_BRIEF, DETAILED_RENDERS, REMIX, REMIX_BRIEF, classOf, isDetailed, kindFor } from '@telios/shared';
 import type { Design, RunEvent } from '@telios/shared';
 import { DATA } from '../config.ts';
 import { provider } from '../engine/llm.ts';
@@ -65,7 +65,12 @@ export async function drawVector(id: string, signal: AbortSignal, steps: VectorS
       rd.confirmed = true;
     });
 
-    const run = newRun(getDesign(design.id)!, 'reillustrate', { note: (o.madeFor === REMIX ? [REMIX_BRIEF, o.notes] : [o.notes]).filter(Boolean).join(' ') || undefined });
+    // Detailed (Image to new SVG): the original's density, fine lines kept, with more renders to get there
+    const detailed = isDetailed(o);
+    const run = newRun(getDesign(design.id)!, 'reillustrate', {
+      note: (o.madeFor === REMIX ? [REMIX_BRIEF, detailed && DETAIL_BRIEF, o.notes] : [o.notes]).filter(Boolean).join(' ') || undefined,
+      ...(detailed && { maxRenders: DETAILED_RENDERS, fineLines: true }),
+    });
     stage('Studying the picture', drawingStage('plan', '', run.options.maxRenders));
     await steps.draw(run.id, { signal, onEvent: (e) => { if (e.type === 'status' && e.status === 'running' && e.message) stage(e.message, drawingStage(e.stage, e.message, run.options.maxRenders)); } });
     stopped();

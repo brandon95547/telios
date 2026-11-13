@@ -78,6 +78,16 @@ function hairlineFrame() {
   return doc(1150, 1790, `<rect x="20" y="20" width="1110" height="1750" fill="none" stroke="#1d1a17" stroke-width="1.2"/>${wave(60)}${wave(1730)}${plume}`);
 }
 
+test('a detailed drawing keeps its fine lines: the thin check reports them and passes', async () => {
+  const strict = await appReady(hairlineFrame(), { form: 'frame', size: [1150, 1790] }, INK, FRAME);
+  const kept = await appReady(hairlineFrame(), { form: 'frame', size: [1150, 1790] }, INK, FRAME, undefined, { fineLines: true });
+  assert.equal(strict.checks.find((c) => c.id === 'thin')!.ok, false);
+  const thin = kept.checks.find((c) => c.id === 'thin')!;
+  assert.equal(thin.ok, true);
+  assert.match(thin.detail, /kept as Detailed asks/);
+  assert.ok(!failures(kept).some((l) => /lines hold/.test(l)), 'nothing about fine lines goes back to the model');
+});
+
 test('a hairline frame with a plume off the top and no repeat fails what an app would hit', async () => {
   const r = await appReady(hairlineFrame(), { form: 'frame', size: [1150, 1790] }, INK, FRAME);
   const s = status(r);

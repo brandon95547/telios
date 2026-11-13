@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, REMIX_STYLE_LABEL, REPEATS, DETAILS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalPicker } from './GoalPicker.tsx';
 
@@ -66,6 +66,13 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
 
       <section className="panel-section">
         <h2><span className="step">3</span> Adjust</h2>
+        {goal.id === 'remix' && (
+          <div className="field">
+            <div className="label">Detail</div>
+            <Seg label="Detail" value={options.detail} onChange={(v) => set('detail', v)} options={DETAILS.map((d) => ({ value: d.value, label: d.label }))} />
+            <div className="sub">{DETAILS.find((d) => d.value === options.detail)?.hint}</div>
+          </div>
+        )}
         {(cutout || (traced && goal.id === 'vector')) && (
           <label className="field">
             <div className="label">Clean up</div>

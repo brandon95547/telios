@@ -89,6 +89,29 @@ function finishes(seen: Record<string, unknown> = {}, cost = 0.0421) {
 
 const designsOf = (resultId: string) => listDesigns().filter((d) => d.fromResult === resultId);
 
+test('Image to new SVG is Detailed unless Simple is chosen: told to keep the density, given 14 renders and fine lines; Simple and page-ready SVG keep the rules', async () => {
+  const { DETAIL_BRIEF, DETAILED_RENDERS, MAX_RENDERS_FOR_TEST } = { ...(await import('@telios/shared')), MAX_RENDERS_FOR_TEST: (await import('../src/config.ts')).MAX_RENDERS };
+  assert.equal(DEFAULT_OPTIONS.detail, 'detailed', 'Detailed is the starting choice');
+  const drawn = async (id: string, over: Record<string, unknown>) => {
+    await makeResult(id, over);
+    await drawVector(id, new AbortController().signal, { read, draw: finishes() });
+    const r = getResult(id)!;
+    assert.equal(r.status, 'done');
+    return getRun(r.drawing!.runId)!.options as Record<string, any>;
+  };
+  const detailed = await drawn('xdet1', { type: 'trace', madeFor: 'remix' });
+  assert.ok(detailed.note.includes(DETAIL_BRIEF), detailed.note);
+  assert.equal(detailed.maxRenders, DETAILED_RENDERS);
+  assert.equal(detailed.fineLines, true);
+  const simple = await drawn('xdet2', { type: 'trace', madeFor: 'remix', detail: 'simple' });
+  assert.ok(!simple.note.includes(DETAIL_BRIEF));
+  assert.equal(simple.maxRenders, MAX_RENDERS_FOR_TEST);
+  assert.equal(simple.fineLines, undefined);
+  const page = await drawn('xdet3', { type: 'vector', madeFor: 'frame', detail: 'detailed' });
+  assert.ok(!(page.note ?? '').includes(DETAIL_BRIEF), 'page-ready SVG keeps the rules');
+  assert.equal(page.fineLines, undefined);
+});
+
 test('a flat SVG result gets the SVG, its fitting data and a preview, and its design stays out of the library', async () => {
   await makeResult('xvec1');
   const seen: Record<string, unknown> = {};

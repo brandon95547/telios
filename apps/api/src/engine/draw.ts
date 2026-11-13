@@ -329,7 +329,7 @@ export async function reillustrate(ctx: DrawContext): Promise<Drawing> {
     if (unused.length) warnings.push(`Colors in the SVG but not in the palette: ${unused.slice(0, 8).join(', ')}.`);
     if (run.reading.colorMode === 'neutral' && palette.some((p) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(p.hex.slice(i, i + 2), 16)); return Math.max(r, g, b) - Math.min(r, g, b) > 6; })) warnings.push('The color rule is a neutral base, but the palette has hues: use grays only.');
     // the measured checks of what an app asks of the piece (and the layout's own, which they include)
-    const report = await appReady(svg, layout, palette, run.reading, off);
+    const report = await appReady(svg, layout, palette, run.reading, off, { fineLines: run.options.fineLines });
     warnings.push(...failures(report));
     // the original's window, where the drawing keeps the original's shape (a recomposed square master does not)
     const wantWindow = measuredWindow(ctx.analysis);

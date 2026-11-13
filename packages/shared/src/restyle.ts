@@ -51,6 +51,21 @@ const RETIRED: Record<string, Pick<OutputTypeInfo, 'label' | 'vector'>> = {
 export const REMIX = 'remix';
 export const REMIX_TARGET = { value: REMIX, label: 'Inspired by (Remix)', hint: 'A new drawing inspired by the picture: the same subject, style and colors, but its own shapes, so a batch of butterflies comes back as a batch of new butterflies. A model draws each one, as a flat SVG, and costs the same.' } as const;
 /** What the model is told for a remix. */
+/** How much of the original's detail Image to new SVG keeps (the user, 2026-11-12). Simple holds to the app-ready rule that every line
+ * stays visible at tile and phone size, which thickens or leaves out fine detail; Detailed keeps the original's density, fine lines
+ * included, with more renders to get there (it may lose its finest lines when placed very small). */
+export type Detail = 'simple' | 'detailed';
+export const DETAILS: { value: Detail; label: string; hint: string }[] = [
+  { value: 'detailed', label: 'Detailed', hint: 'Keeps the original\u2019s density, fine lines included, in up to 14 renders: about twice the time and cost. The finest lines may not show when it is placed very small.' },
+  { value: 'simple', label: 'Simple', hint: 'Every line thick enough to show at tile and phone size: fine detail is thickened or left out. Up to 8 renders.' },
+];
+/** The renders a detailed drawing may take (a simple one takes the server's own, TELIOS_MAX_RENDERS). */
+export const DETAILED_RENDERS = 14;
+/** What the model is told for a detailed drawing. */
+export const DETAIL_BRIEF = 'Detail: keep the original\u2019s full density. Draw every motif, marking, vein, hatch and fine line it has, at its own weight: do not simplify, merge or leave anything out. Fine lines are welcome here: the lines-that-hold rule does not apply to this drawing.';
+/** Whether a result is drawn detailed: Image to new SVG, with Detailed chosen. */
+export const isDetailed = (o: { madeFor?: string; detail?: Detail }) => o.madeFor === REMIX && o.detail === 'detailed';
+
 export const REMIX_BRIEF = 'Draw a new piece inspired by this one, not a copy of it: the same kind of subject, the same art style, line weight and color palette, but its own pose, proportions, markings and details, so that placed beside the original it is clearly another piece of the same family. Do not reproduce the original’s outlines.';
 
 /** Whether a model writes the drawing (the Vector redraw's loop), not ComfyUI. */
@@ -236,6 +251,8 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
+  /** Image to new SVG: how much of the original's detail it keeps. */
+  detail: Detail;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for illustrations. */
   whole: boolean;
   /** The shape of the canvas a whole figure is drawn on. */
@@ -250,7 +267,7 @@ export interface RestyleOptions {
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', detail: 'detailed', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -469,6 +486,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.enhance = raw?.enhance === true;
   if (!cutoutOnly(o)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
+  o.detail = pick(raw?.detail, DETAILS.map((d) => d.value), o.detail);
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   // a remix draws from its own description of the picture, which Draw it whole's would replace
@@ -503,6 +521,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
     const d = r.drawing;
     if (d) {
       rows.push({ label: 'Drawn by', value: d.model });
+      if (o.madeFor === REMIX) rows.push({ label: 'Detail', value: isDetailed(o) ? 'Detailed: the original\u2019s density, fine lines kept' : 'Simple: every line thick enough to show small' });
       rows.push({ label: 'Renders', value: `${d.renders} of ${d.maxRenders} allowed` });
       // a model with no known price (a local or custom one) has no cost to show
       if (d.costUsd > 0) rows.push({ label: 'Cost', value: d.costUsd < 0.005 ? 'under 1¢' : `about ${(d.costUsd * 100).toFixed(d.costUsd < 0.1 ? 1 : 0)}¢` });
