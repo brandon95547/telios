@@ -43,7 +43,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
     if (g.type !== 'illustration' && g.type !== 'vector') set('variations', 1);
     // what each kind of result is on: a cutout, a vector and a pattern tile or border have no ground of their own to keep
     if (g.type !== 'illustration' && !(g.type === 'trace' && g.madeFor === 'object')) set('background', 'transparent');
-    set('format', g.type === 'cutout' ? 'webp' : options.format === 'jpeg' || cutoutOnly(options) ? 'png' : options.format);
+    set('format', g.type === 'cutout' ? 'webp' : g.style || options.format === 'jpeg' || cutoutOnly(options) ? 'png' : options.format);
   };
   // Draw it whole has the model describe the whole figure, which is what is drawn
   const noWhole = health && !health.model.ok ? `Draw it whole needs the model to describe the figure: ${health.model.error ?? 'set one up in .env'}` : '';
@@ -171,7 +171,8 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <div className="label">{byModel ? 'Extra words for the model' : 'Extra words for the prompt'}</div>
           <input className="text" value={options.notes} maxLength={300} placeholder={byModel ? 'Optional: one ink, keep the rosettes, a deeper foot…' : 'Optional: gold and deep red, thin lines…'} onChange={(e) => set('notes', e.target.value)} />
         </label>}
-        {illustration && (
+        {/* Remix to SVG is taken as its SVG: the drawing beside it is always a PNG */}
+        {illustration && !remixing && (
           <div className="field">
             <div className="label">File type</div>
             <Seg label="File type" value={options.format === 'webp' ? 'webp' : 'png'} onChange={(v) => set('format', v)} options={[{ value: 'png', label: 'PNG' }, { value: 'webp', label: 'WebP' }]} />

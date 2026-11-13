@@ -473,8 +473,9 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
-  // a remix draws from its own description of the picture, which Draw it whole's would replace
-  if (o.style === REMIX_STYLE) o.whole = false;
+  // a remix draws from its own description of the picture, which Draw it whole's would replace; it is taken as its SVG, and the drawing
+  // beside it is a PNG (which opens everywhere and keeps every pixel for editing), so it has no file type to choose
+  if (o.style === REMIX_STYLE) { o.whole = false; o.format = 'png'; }
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
   o.clearInside = raw?.clearInside !== false;

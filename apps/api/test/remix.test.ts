@@ -42,6 +42,13 @@ test('Draw it whole is not offered with Remix, which draws from its own descript
   assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco', whole: true }).whole, true, 'it stays with any art style');
 });
 
+test('Remix to SVG has no file type to choose: it is taken as its SVG, with the drawing beside it as a PNG', () => {
+  const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, format: 'webp' });
+  assert.equal(o.format, 'png');
+  assert.deepEqual(mainFile({ options: o, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'png' });
+  assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco', format: 'webp' }).format, 'webp', 'an art style keeps its choice');
+});
+
 test('without a model nothing is described (the job refuses to draw it then)', async () => {
   assert.equal(await readRemix(Buffer.from('not a picture')), null);
 });
@@ -69,8 +76,8 @@ test(`it is drawn on a blank canvas, without the picture, at ${REMIX_DENOISE} in
 
 test('a remix is taken as its SVG, with the drawing beside it; without an SVG (the trace failed) as the drawing', () => {
   const options = cleanOptions({ type: 'illustration', style: REMIX_STYLE, format: 'webp' });
-  assert.deepEqual(mainFile({ options, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'webp' });
-  assert.deepEqual(mainFile({ options, files: {} }), { format: 'webp' });
+  assert.deepEqual(mainFile({ options, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'png' });
+  assert.deepEqual(mainFile({ options, files: {} }), { format: 'png' });
   const settings = { model: 'flux', width: 1024, height: 1024, steps: 48, denoise: 1, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, vector: { colors: 1 } };
   assert.equal(settingRows({ options, settings, seed: 1 } as any).find((r) => r.label === 'Vector')!.value, 'the drawing traced into 1 flat color, one SVG layer each');
 });
