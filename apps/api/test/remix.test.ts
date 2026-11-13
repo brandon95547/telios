@@ -8,11 +8,11 @@ process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-te
 
 process.env.TELIOS_PROVIDER = 'none';   // no model: nothing is described
 
-const { REMIX_DENOISE, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
+const { REMIX_DENOISE, REMIX_LEVELS, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, remixLevelOf, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
 const sharp = (await import('sharp')).default;
 const { traceToSvg } = await import('../src/restyle/trace-svg.ts');
 const { cleanAnswer } = await import('../src/restyle/read.ts');
-const { readRemix } = await import('../src/restyle/remix.ts');
+const { instructionsFor, readRemix } = await import('../src/restyle/remix.ts');
 const { lookWords, restylePrompt } = await import('../src/restyle/prompt.ts');
 const { restyleWorkflow } = await import('../src/comfy/workflows.ts');
 
@@ -47,6 +47,36 @@ test('Remix to SVG has no file type to choose: it is taken as its SVG, with the 
   assert.equal(o.format, 'png');
   assert.deepEqual(mainFile({ options: o, files: { svg: 'x/result.svg' } }), { format: 'svg', also: 'png' });
   assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco', format: 'webp' }).format, 'webp', 'an art style keeps its choice');
+});
+
+test('Remix to SVG has three levels, Detailed by default: each describes less and posterizes the trace further', async () => {
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE }).remixLevel, 'detailed');
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixLevel: 'simple' }).remixLevel, 'simple');
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixLevel: 'nonsense' }).remixLevel, 'detailed');
+  assert.deepEqual(REMIX_LEVELS.map((l) => [l.value, l.colors, l.smooth]), [['detailed', 8, 'light'], ['medium', 4, 'strong'], ['simple', 3, 'strong']]);
+  // the words asked for, and what is left out
+  assert.match(instructionsFor('detailed'), /120 to 200 words/);
+  assert.match(instructionsFor('medium'), /60 to 100 words/);
+  assert.match(instructionsFor('medium'), /Leave out small parts/);
+  assert.match(instructionsFor('simple'), /30 to 50 words/);
+  assert.match(instructionsFor('simple'), /bold simple flat shapes/);
+  for (const level of ['detailed', 'medium', 'simple'] as const) {
+    assert.match(instructionsFor(level), /on a plain white background/, level);
+    assert.doesNotMatch(instructionsFor(level), /\$\{/, `${level}: no placeholder left`);
+  }
+  // a drawing in six colors, posterized to three at Simple
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-level-'));
+  const six = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="#fff"/>' +
+    ['#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#2980b9', '#1d1a17'].map((c, i) => `<rect x="${20 + i * 45}" y="40" width="40" height="120" fill="${c}"/>`).join('') + '</svg>');
+  await sharp(six).png().toFile(path.join(dir, 'drawn.png'));
+  const level = remixLevelOf({ remixLevel: 'simple' });
+  const traced = await traceToSvg(path.join(dir, 'drawn.png'), dir, cleanOptions({ type: 'illustration', style: REMIX_STYLE, background: 'white', cleanup: level.smooth }), level.colors);
+  assert.ok(traced.layers.length <= 3, `${traced.layers.length} layers`);
+  fs.rmSync(dir, { recursive: true, force: true });
+  // the details say which level
+  const settings = { model: 'flux', width: 832, height: 1296, steps: 48, denoise: 1, guidance: 3.5, sampler: 'euler', scheduler: 'simple', easycache: 0, remix: { description: 'A drawing.' } };
+  const rows = settingRows({ options: cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixLevel: 'medium' }), settings, seed: 1 } as any);
+  assert.equal(rows.find((r) => r.label === 'Level')!.value, 'Medium');
 });
 
 test('without a model nothing is described (the job refuses to draw it then)', async () => {

@@ -83,6 +83,15 @@ export const REMIX_STYLE = 'remix';
 export const REMIX_STYLE_LABEL = 'Remix';
 export const REMIX_STEPS = 48;
 export const REMIX_DENOISE = 1;
+/** How much of the picture Remix to SVG keeps (the user, 2026-11-13): how closely the model describes it, and how far the drawing is
+ * posterized when it is traced. Detailed is how it was built. */
+export type RemixLevel = 'detailed' | 'medium' | 'simple';
+export const REMIX_LEVELS: { value: RemixLevel; label: string; hint: string; colors: number; smooth: CleanUp }[] = [
+  { value: 'detailed', label: 'Detailed', hint: 'Every part described, and traced in up to 8 colors: rich, busy designs.', colors: 8, smooth: 'light' },
+  { value: 'medium', label: 'Medium', hint: 'The subject and its main shapes, without the small parts; traced in up to 4 colors with smoother edges.', colors: 4, smooth: 'strong' },
+  { value: 'simple', label: 'Simple', hint: 'The subject and its silhouette as bold flat shapes; traced in up to 3 colors with smooth edges: a clean, poster-like SVG.', colors: 3, smooth: 'strong' },
+];
+export const remixLevelOf = (o: { remixLevel?: RemixLevel }) => REMIX_LEVELS.find((l) => l.value === o.remixLevel) ?? REMIX_LEVELS[0];
 
 /** What a person asks for, in their words. Each goal is one way of using the tool, and says what it gives, how long it takes and what it costs;
  * the type and "made for" it sets are how the tool does it. The Choose step lists these, not the types. */
@@ -249,6 +258,8 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
+  /** Remix to SVG: how closely the picture is described, and how far its drawing is posterized. */
+  remixLevel: RemixLevel;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for illustrations. */
   whole: boolean;
   /** The shape of the canvas a whole figure is drawn on. */
@@ -263,7 +274,7 @@ export interface RestyleOptions {
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', remixLevel: 'detailed', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -471,6 +482,7 @@ export function cleanOptions(raw: any): RestyleOptions {
   o.enhance = raw?.enhance === true;
   if (!cutoutOnly(o)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
+  o.remixLevel = pick(raw?.remixLevel, REMIX_LEVELS.map((l) => l.value), o.remixLevel);
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
   // a remix draws from its own description of the picture, which Draw it whole's would replace; it is taken as its SVG, and the drawing
@@ -561,7 +573,7 @@ export function settingRows(r: Pick<RestyleResult, 'options' | 'settings' | 'see
   if (r.seed !== undefined) rows.push({ label: 'Seed', value: String(r.seed) });
   if (s?.styleReference) rows.push({ label: 'Style picture', value: `${findStyle(s.styleReference.style)?.label ?? s.styleReference.style}, strength ${trim(s.styleReference.weight)}` });
   else if (s && wantsStyleReference(o)) rows.push({ label: 'Style picture', value: 'none, drawn from words alone' });
-  if (s?.remix) rows.push({ label: 'Described as', value: s.remix.description });
+  if (s?.remix) rows.push({ label: 'Level', value: remixLevelOf(o).label }, { label: 'Described as', value: s.remix.description });
   if (s?.startCutout) rows.push({ label: 'Start picture', value: 'the subject cut out of the picture, on flat white' });
   if (s?.vector) rows.push({ label: 'Vector', value: `the drawing traced into ${s.vector.colors} flat color${s.vector.colors === 1 ? '' : 's'}, one SVG layer each` });
   if (s?.whole) {

@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_LEVELS, remixLevelOf, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalPicker } from './GoalPicker.tsx';
 
@@ -71,6 +71,13 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
         {remixing && (health && !health.model.ok
           ? <div className="sub warn">Remix to SVG needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
           : <div className="sub">Drawn on a blank canvas from the model\u2019s description of each picture (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), then traced into an SVG of flat colors.</div>)}
+        {remixing && (
+          <div className="field">
+            <div className="label">Level</div>
+            <Seg label="Level" value={options.remixLevel} onChange={(v) => set('remixLevel', v)} options={REMIX_LEVELS.map((l) => ({ value: l.value, label: l.label }))} />
+            <div className="sub">{remixLevelOf(options).hint}</div>
+          </div>
+        )}
         {(cutout || (traced && goal.id === 'vector')) && (
           <label className="field">
             <div className="label">Clean up</div>

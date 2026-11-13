@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, REMIX_STEPS, REMIX_STYLE, denoiseOf, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, REMIX_STEPS, REMIX_STYLE, denoiseOf, remixLevelOf, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
@@ -151,7 +151,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     let remix: string | undefined;
     if (remixing) {
       stage('Describing the picture');
-      remix = (await readRemix(source, signal)) ?? undefined;
+      remix = (await readRemix(source, signal, o.remixLevel)) ?? undefined;
       if (!remix) throw new Error('Remix needs the model to describe the picture, and it could not: try again.');
     }
     const warnings: string[] = [];
@@ -258,7 +258,9 @@ export async function drawResult(id: string, signal: AbortSignal) {
     if (remixing) {
       stage('Tracing to SVG');
       try {
-        const traced = await traceToSvg(path.join(dir, 'result.png'), scratch, o);
+        // posterized as far as the level asks: its colors, and its edges smoothed at least that much
+        const level = remixLevelOf(o);
+        const traced = await traceToSvg(path.join(dir, 'result.png'), scratch, { ...o, cleanup: level.smooth }, level.colors);
         fs.copyFileSync(path.join(scratch, 'layered.svg'), path.join(dir, 'result.svg'));
         settings.vector = { colors: traced.layers.length };
         svg = true;
