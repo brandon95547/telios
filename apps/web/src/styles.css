@@ -292,6 +292,7 @@ button.tile-img:disabled { cursor: default; opacity: 1; }
 .viewer { position: fixed; inset: 0; z-index: 40; background: rgba(10, 16, 14, 0.82); display: grid; place-items: center; padding: 20px; }
 .viewer-box { background: var(--panel); border-radius: 10px; width: min(1500px, 100%); max-height: 100%; overflow: auto; padding: 14px 18px 16px; }
 .viewer-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.viewer-nav { display: flex; align-items: center; gap: 10px; }
 .viewer-name { font-size: 15px; }
 .keep { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
 .keep input { width: 18px; height: 18px; accent-color: var(--deep); }
