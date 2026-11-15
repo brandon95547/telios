@@ -76,7 +76,7 @@ def segment(rgba, color_mode, keep_background=False, pinhole=12, wider=1.0, clea
         ink = main_parts(ink)
         window = find_window(ink)
         if window is None:
-            window = flat_window(rgba[..., :3])
+            window = flat_window(rgba[..., :3], ink=ink)
         if color_mode == 'one-ink':
             # line art: the ink alone, the paper between its lines left clear
             shape = ink & ~window if window is not None else ink

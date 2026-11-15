@@ -82,3 +82,48 @@ class ClearedInside(unittest.TestCase):
         self.assertFalse(out[90, 90])
         self.assertTrue(out[141, 141])
         self.assertTrue(out[30, 30])
+
+
+class FlatWindow(unittest.TestCase):
+    """A frame's window drawn as a flat panel is left open; a figure's own flat body is not a window (a remix's black silhouette
+    on clear was traced into an empty SVG)."""
+
+    def rgba(self, rgb, alpha):
+        return np.dstack([rgb, alpha]).astype(np.uint8)
+
+    def test_a_tinted_panel_ringed_by_its_frame_is_a_window(self):
+        from telios_worker.analyze import find_paper, flat_window
+        rgb = np.full((300, 300, 3), 255, np.uint8)
+        rgb[30:270, 30:270] = (120, 70, 30)      # the frame
+        rgb[70:230, 70:230] = (230, 220, 190)    # its tinted window
+        _, ink = find_paper(self.rgba(rgb, np.full((300, 300), 255)))
+        window = flat_window(rgb, ink=ink)
+        self.assertIsNotNone(window)
+        self.assertTrue(window[150, 150])
+
+    def test_a_solid_figure_on_clear_is_not_a_window(self):
+        from telios_worker.analyze import find_paper, flat_window
+        from telios_worker.trace import segment
+        yy, xx = np.mgrid[0:300, 0:300]
+        body = np.hypot((xx - 150) / 1.6, yy - 150) < 70
+        rgb = np.full((300, 300, 3), 250, np.uint8)
+        rgb[body] = 10
+        rgba = self.rgba(rgb, np.where(body, 255, 0))
+        _, ink = find_paper(rgba)
+        self.assertIsNone(flat_window(rgb, ink=ink))
+        shape, _, _ = segment(rgba, 'full', clear_inside=True)
+        self.assertGreater(shape[body].mean(), 0.95)
+
+    def test_a_pale_figure_inside_its_outline_is_not_a_window(self):
+        from telios_worker.analyze import flat_window
+        yy, xx = np.mgrid[0:300, 0:300]
+        # a body with legs: far from filling its box, as an opening does
+        body = (np.hypot((xx - 150) / 2, yy - 120) < 45) | ((yy > 120) & (yy < 250) & ((abs(xx - 80) < 8) | (abs(xx - 220) < 8)))
+        rgb = np.full((300, 300, 3), 255, np.uint8)
+        outline = np.zeros_like(body)
+        for dy in range(-6, 7):
+            for dx in range(-6, 7):
+                outline |= np.roll(np.roll(body, dy, 0), dx, 1)
+        rgb[outline] = 0
+        rgb[body] = 240
+        self.assertIsNone(flat_window(rgb, ink=outline))

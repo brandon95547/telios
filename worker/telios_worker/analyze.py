@@ -85,9 +85,16 @@ def find_window(ink, min_share=0.08):
     return ndimage.binary_dilation(empty == j, iterations=r) & ~ink
 
 
-def flat_window(rgb, min_share=0.08):
+WINDOW_GROUND = 0.1  # the share of a flat panel's outline that may touch the ground: a frame's window is ringed by the frame
+WINDOW_FILL = 0.65   # the least share of its box a window fills: a rectangle fills it, an oval 0.79; a figure's pale body far less
+
+
+def flat_window(rgb, min_share=0.08, ink=None):
     """For a piece with no paper round it: a flat panel in the middle (a frame's window drawn as
-    a tinted panel), the region of the center's color reached from the center."""
+    a tinted panel), the region of the center's color reached from the center. `ink`, where the
+    piece has a ground: a panel that meets the ground is the design's own flat body (a silhouette,
+    a solid figure on clear), not a window, so none is found; nor is a panel too ragged to be an
+    opening (a white animal inside its outline)."""
     h, w = rgb.shape[:2]
     labs = lab(ndimage.uniform_filter(rgb.astype(np.float64), size=(3, 3, 1)))
     c = np.median(labs[h // 2 - 5:h // 2 + 5, w // 2 - 5:w // 2 + 5].reshape(-1, 3), 0)
@@ -99,6 +106,13 @@ def flat_window(rgb, min_share=0.08):
     region = ndimage.binary_fill_holes(parts == j)
     if region.mean() < min_share or region[0].any() or region[-1].any() or region[:, 0].any() or region[:, -1].any():
         return None
+    ys, xs = np.nonzero(region)
+    if region.sum() < WINDOW_FILL * (np.ptp(ys) + 1) * (np.ptp(xs) + 1):
+        return None
+    if ink is not None:
+        ring = ndimage.binary_dilation(region, iterations=3) & ~region
+        if (~ink[ring]).mean() > WINDOW_GROUND:
+            return None
     return region
 
 
@@ -426,7 +440,7 @@ def ingest(original, outdir):
         window_fill = None
         if window is None:
             # a window drawn as a tinted panel is ink to the paper test; find it by its flatness
-            window = flat_window(small[..., :3])
+            window = flat_window(small[..., :3], ink=ink)
             if window is not None:
                 fill = np.median(small[..., :3][window], 0)
                 paper_lab = lab(np.array(parse_hex(paper['color']), float)) if paper['kind'] == 'paper' else None
