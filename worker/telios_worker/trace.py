@@ -169,7 +169,20 @@ def single_ink(rgba):
     return bool(pts.std(axis=0).max() < 15)
 
 
-def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0, clear_inside=False):
+def cleared_picture(source, shape, size, out):
+    """The picture as it came, with what the trace left out (its paper, the ground between its lines) made clear: the same cut as the SVG's,
+    so a drawing kept beside its trace is clear in the same places. The edge is softened a little, as the trace's curves are."""
+    alpha = Image.fromarray((ndimage.gaussian_filter(shape.astype(np.float32), 0.7) * 255).round().astype(np.uint8))
+    if alpha.size != size:
+        alpha = alpha.resize(size, Image.LANCZOS)
+    im = load_rgba(source).convert('RGB')
+    im.putalpha(alpha)
+    im.save(out)
+
+
+def trace(source, outdir, palette=None, color_mode='full', keep_background=False, max_colors=8, title='Telios', merge=0, smooth=0, clear_inside=False,
+          cleared=None):
+    """`cleared`: a path to write the picture to, clear wherever the trace is (see cleared_picture)."""
     im, k, (w0, h0) = prepare(source)
     rgba = np.asarray(im).astype(np.float64)
     h, w = rgba.shape[:2]
@@ -198,4 +211,6 @@ def trace(source, outdir, palette=None, color_mode='full', keep_background=False
     svg = layered_svg(layers, w, h, w0, h0, title)
     with open(os.path.join(outdir, 'layered.svg'), 'w') as f:
         f.write(svg)
+    if cleared:
+        cleared_picture(source, shape, (w0, h0), cleared)
     return {'size': [w0, h0], 'tracedAt': [w, h], 'layers': summary(layers), 'background': paper, 'bytes': len(svg)}

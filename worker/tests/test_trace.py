@@ -70,6 +70,32 @@ class SingleInk(unittest.TestCase):
         self.assertFalse(single_ink(np.dstack([b, np.full((200, 200), 255, np.uint8)])))
 
 
+class ClearedPicture(unittest.TestCase):
+    def test_the_picture_kept_beside_a_trace_is_clear_where_the_trace_is(self):
+        # an ink outline round a white body, the body's top a faint cream (a drawn remix): all of the paper goes, inside and out,
+        # not the tinted part kept and the plain part cleared
+        import os
+        import tempfile
+        from PIL import Image
+        from telios_worker.trace import trace
+        yy, xx = np.mgrid[0:400, 0:400]
+        body = np.hypot((xx - 200) / 1.4, yy - 200) < 110
+        ring = (np.hypot((xx - 200) / 1.4, yy - 200) < 122) & ~body
+        img = np.full((400, 400, 3), 255, np.uint8)
+        img[body & (yy < 200)] = (247, 247, 239)
+        img[ring] = 5
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, 's.png')
+            Image.fromarray(img).save(src)
+            trace(src, d, None, 'auto', False, 3, 'T', 20, 2, True, cleared=os.path.join(d, 'clear.png'))
+            alpha = np.asarray(Image.open(os.path.join(d, 'clear.png')))[..., 3]
+        self.assertEqual(alpha.shape, (400, 400))
+        self.assertLess(alpha[150, 200], 10)    # the cream top
+        self.assertLess(alpha[250, 200], 10)    # the white bottom
+        self.assertLess(alpha[10, 10], 10)      # the paper round it
+        self.assertGreater(alpha[200, 200 + 162], 245)   # the outline
+
+
 class ClearedInside(unittest.TestCase):
     def test_a_large_gap_of_paper_inside_the_design_is_cleared_and_a_small_one_stays(self):
         from telios_worker.trace import cleared_inside

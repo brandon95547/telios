@@ -120,9 +120,11 @@ export async function drawResult(id: string, signal: AbortSignal) {
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
     if (remixing && !provider().provider) throw new Error('Remix needs a model, to describe the picture before it is drawn.');
     const { w, h, tw, th } = o.whole ? wholeSizes(o) : drawnSizes([meta.width!, meta.height!], o, input?.originalSize);
-    const clearing = !keep && (o.background !== 'white' || byModel);
-    // a remix is not drawn on a key color (nothing of the picture is drawn from): it is asked for on white, and cleared from white
-    const byColor = clearing && !removal && !remixing;
+    // a remix is not drawn on a key color (nothing of the picture is drawn from): it is asked for on white, and cleared from white by
+    // its trace, never by the model (a subject model keeps a tinted part of an ink drawing and drops a plain white one, so half of
+    // the drawing came out clear and half white)
+    const clearing = !keep && !remixing && (o.background !== 'white' || byModel);
+    const byColor = clearing && !removal;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
     const steps = remixing ? REMIX_STEPS : quality.steps;
     // the stages this picture goes through, so the progress bar knows its way
@@ -244,31 +246,37 @@ export async function drawResult(id: string, signal: AbortSignal) {
       const big = await comfy().run(upscaleWorkflow(info.upscalers[0], scale), { 'picture.png': colors }, signal);
       settings.enlargedWith = info.upscalers[0];
       const sized = sharp(big).resize(tw, th, { fit: 'fill' });
-      png = o.background === 'transparent'
+      png = clearing && o.background === 'transparent'
         ? await withMask(await sized.png().toBuffer(), await sharp(png).extractChannel('alpha').resize(tw, th, { fit: 'fill' }).png().toBuffer())
         : await sized.png().toBuffer();
     } else if (tw !== w || th !== h) {
       png = await sharp(png).resize(tw, th, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
     }
-    fs.writeFileSync(path.join(dir, 'result.png'), png);
 
-    // a remix is wanted as a vector: what was drawn, traced into flat colors as Image to SVG traces a picture (the drawing is
-    // kept too, and stays the result if the trace fails)
+    // a remix is wanted as a vector: what was drawn on white, traced into flat colors as Image to SVG traces a picture. The drawing
+    // is kept too, clear where the trace is (its paper, and the paper inside it as the level asks), so the two match; if the trace
+    // fails, the drawing is cleared from white round the outside and stays the result
     let svg = false;
     if (remixing) {
       stage('Tracing to SVG');
+      const drawn = path.join(scratch, 'drawn.png');
+      fs.writeFileSync(drawn, png);
       try {
         // posterized as far as the level asks: its colors, and its edges smoothed at least that much
         const level = remixLevelOf(o);
-        const traced = await traceToSvg(path.join(dir, 'result.png'), scratch, { ...o, cleanup: level.smooth }, level.colors);
+        const traced = await traceToSvg(drawn, scratch, { ...o, cleanup: level.smooth }, level.colors, path.join(scratch, 'clear.png'));
         fs.copyFileSync(path.join(scratch, 'layered.svg'), path.join(dir, 'result.svg'));
         settings.vector = { colors: traced.layers.length };
         svg = true;
       } catch (e) {
         if (signal.aborted) throw e;
         warnings.push(`The drawing could not be traced into an SVG (${(e as Error).message}), so it is kept as a picture only.`);
+        await python(['key', drawn, path.join(scratch, 'clear.png'), '--no-window']);
       }
+      png = fs.readFileSync(path.join(scratch, 'clear.png'));
+      settings.cutout = { by: 'color', with: 'white' };
     }
+    fs.writeFileSync(path.join(dir, 'result.png'), png);
 
     stage('Finishing');
     await screenCopies(png, dir);

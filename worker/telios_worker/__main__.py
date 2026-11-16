@@ -3,7 +3,7 @@
   ingest    <original> <design-dir>                         prepare and measure an upload
   pdfpages  <pdf> <out-dir> [--max 10] [--dpi 300]          each page as a PNG
   vectorize <trace.png> <out-dir> --palette JSON [--width W --height H]
-  trace     <source.png> <out-dir> [--palette JSON] [--mode full|neutral|one-ink] [--keep-background] [--clear-inside]
+  trace     <source.png> <out-dir> [--palette JSON] [--mode full|neutral|one-ink] [--keep-background] [--clear-inside] [--cleared out.png]
   rebuild   <crop.png> <out-dir> --reading JSON [--analysis analysis.json]
   unzip     <zip> <out-dir> [--max-files N] [--max-bytes B]    the pictures in a zip
   eps       <eps> <out.png> [--longest 2048]                    an EPS drawn as pixels
@@ -84,6 +84,7 @@ def main(argv=None):
     t.add_argument('--merge', type=float, default=0, help='Lab distance under which two of the design\'s own colors are one')
     t.add_argument('--smooth', type=int, default=0, choices=[0, 1, 2], help='how far the colors\' outlines are evened out: off, light, strong')
     t.add_argument('--title', default='Telios')
+    t.add_argument('--cleared', help='also write the picture, clear wherever the trace is')
     ti = sub.add_parser('tile')
     ti.add_argument('source')
     ti.add_argument('outdir')
@@ -156,7 +157,7 @@ def main(argv=None):
             from .trace import trace
             os.makedirs(args.outdir, exist_ok=True)
             pal = json.loads(args.palette) if args.palette else None
-            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth, args.clear_inside))
+            out(trace(args.source, args.outdir, pal, args.mode, args.keep_background, args.max_colors, args.title, args.merge, args.smooth, args.clear_inside, args.cleared))
         elif args.cmd == 'cutout':
             from .cutout import cutout
             os.makedirs(args.outdir, exist_ok=True)
