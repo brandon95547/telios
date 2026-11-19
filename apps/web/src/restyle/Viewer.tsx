@@ -3,6 +3,7 @@ import { madeAsLine, tracedOnly, cutoutOnly, settingRows, type RestyleResult } f
 import { api } from '../api.ts';
 import { Download } from './Download.tsx';
 import { PromptDialog } from './PromptDialog.tsx';
+import { ViewerNav } from './ViewerNav.tsx';
 
 /** One result large, beside its original: Previous, Keep and Next together at the top (or the arrow keys, Space to tick it), Escape to
  * close; under them its downloads, the settings it was drawn with, and its prompt, which opens in a dialog. */
@@ -30,13 +31,7 @@ export function Viewer({ results, index, setIndex, selected, toggle, onClose }: 
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`${r.inputName}, ${index + 1} of ${results.length}`} onClick={onClose}>
       <div className="viewer-box" onClick={(e) => e.stopPropagation()}>
         <div className="viewer-head">
-          <div className="viewer-nav">
-            <button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)}>← Previous</button>
-            <label className="keep">
-              <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} /> Keep
-            </label>
-            <button type="button" disabled={index === results.length - 1} onClick={() => setIndex(index + 1)}>Next →</button>
-          </div>
+          <ViewerNav index={index} count={results.length} setIndex={setIndex} checked={selected.has(r.id)} toggle={() => toggle(r.id)} label="Keep" />
           <b className="viewer-name">{r.inputName}{o.variations > 1 ? ` · version ${r.variation}` : ''}</b>
           <span className="sub">{madeAsLine(o)}{r.size ? ` · ${r.size[0]} × ${r.size[1]}` : ''}</span>
           <span className="spacer" />

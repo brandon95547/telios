@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RestyleInput } from '@telios/shared';
 import { api } from '../api.ts';
+import { ViewerNav } from './ViewerNav.tsx';
 import { clampZoom, drawnSize, fitScale, stepZoom, zoomLabel } from './zoom.ts';
 
 /** One input picture large: the picture as it was prepared (at most 2048 pixels across), in a window it scrolls in, with zoom out, zoom in and
- * fit; arrows for the next, Space to tick it, Escape to close. Dragging a zoomed picture moves it. */
+ * fit; Previous, Tick and Next together at the top (or the arrow keys, Space to tick it), Escape to close. Dragging a zoomed picture moves it. */
 export function InputViewer({ inputs, index, setIndex, selected, toggle, onClose }: {
   inputs: RestyleInput[]; index: number; setIndex: (i: number) => void;
   selected: Set<string>; toggle: (id: string) => void; onClose: () => void;
@@ -75,9 +76,7 @@ export function InputViewer({ inputs, index, setIndex, selected, toggle, onClose
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`${input.name}, ${index + 1} of ${inputs.length}`} onClick={onClose}>
       <div className="viewer-box input-viewer" onClick={(e) => e.stopPropagation()}>
         <div className="viewer-head">
-          <label className="keep">
-            <input type="checkbox" checked={selected.has(input.id)} onChange={() => toggle(input.id)} /> Tick
-          </label>
+          <ViewerNav index={index} count={inputs.length} setIndex={setIndex} checked={selected.has(input.id)} toggle={() => toggle(input.id)} label="Tick" />
           <b className="viewer-name">{input.name}</b>
           <span className="sub">{input.originalSize ? `${input.originalSize[0]} × ${input.originalSize[1]} · ` : ''}{input.format.toUpperCase()}{input.folder ? ` · ${input.folder}` : ''}</span>
           <span className="spacer" />
@@ -96,9 +95,7 @@ export function InputViewer({ inputs, index, setIndex, selected, toggle, onClose
             onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
         </div>
         <div className="viewer-foot">
-          <button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)}>← Previous</button>
-          <span className="sub">+ and − zoom, 0 fits, Space ticks, Esc closes</span>
-          <button type="button" disabled={index === inputs.length - 1} onClick={() => setIndex(index + 1)}>Next →</button>
+          <span className="sub">← and → for the next, + and − zoom, 0 fits, Space ticks, Esc closes</span>
         </div>
       </div>
     </div>
