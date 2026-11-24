@@ -86,12 +86,21 @@ export const REMIX_DENOISE = 1;
 /** How much of the picture Remix to SVG keeps (the user, 2026-11-13): how closely the model describes it, and how far the drawing is
  * posterized when it is traced. Detailed is how it was built. */
 export type RemixLevel = 'detailed' | 'medium' | 'simple';
-export const REMIX_LEVELS: { value: RemixLevel; label: string; hint: string; colors: number; smooth: CleanUp }[] = [
-  { value: 'detailed', label: 'Detailed', hint: 'Every part described, and traced in up to 8 colors: rich, busy designs.', colors: 8, smooth: 'light' },
-  { value: 'medium', label: 'Medium', hint: 'The subject and its main shapes, without the small parts; traced in up to 4 colors with smoother edges.', colors: 4, smooth: 'strong' },
-  { value: 'simple', label: 'Simple', hint: 'The subject and its silhouette as bold flat shapes; traced in up to 3 colors with smooth edges: a clean, poster-like SVG.', colors: 3, smooth: 'strong' },
+/** `hint` is Remix to SVG's (the description and the trace); `drawnHint` is Remix to Image's, which is not traced. */
+export const REMIX_LEVELS: { value: RemixLevel; label: string; hint: string; drawnHint: string; colors: number; smooth: CleanUp }[] = [
+  { value: 'detailed', label: 'Detailed', hint: 'Every part described, and traced in up to 8 colors: rich, busy designs.', drawnHint: 'Every part described: rich, busy pictures.', colors: 8, smooth: 'light' },
+  { value: 'medium', label: 'Medium', hint: 'The subject and its main shapes, without the small parts; traced in up to 4 colors with smoother edges.', drawnHint: 'The subject and its main shapes, without the small parts.', colors: 4, smooth: 'strong' },
+  { value: 'simple', label: 'Simple', hint: 'The subject and its silhouette as bold flat shapes; traced in up to 3 colors with smooth edges: a clean, poster-like SVG.', drawnHint: 'The subject and its silhouette as bold flat shapes: a clean, poster-like picture.', colors: 3, smooth: 'strong' },
 ];
 export const remixLevelOf = (o: { remixLevel?: RemixLevel }) => REMIX_LEVELS.find((l) => l.value === o.remixLevel) ?? REMIX_LEVELS[0];
+/** What a remix becomes (the user, 2026-11-23): traced into an SVG (Remix to SVG), or kept as the illustration ComfyUI drew (Remix to
+ * Image). A result made before Remix to Image has none, and is an SVG. */
+export type RemixTo = 'svg' | 'image';
+export const remixToOf = (o: { remixTo?: RemixTo }): RemixTo => o.remixTo ?? 'svg';
+/** A remix: drawn from the model's description of the picture on a blank canvas (Draw it whole is drawn as any whole figure). */
+export const isRemix = (o: { style?: string; whole?: boolean }) => o.style === REMIX_STYLE && !o.whole;
+/** A remix that is traced into an SVG: Remix to SVG. */
+export const remixesToSvg = (o: { style?: string; whole?: boolean; remixTo?: RemixTo }) => isRemix(o) && remixToOf(o) === 'svg';
 
 /** What a person asks for, in their words. Each goal is one way of using the tool, and says what it gives, how long it takes and what it costs;
  * the type and "made for" it sets are how the tool does it. The Choose step lists these, not the types. */
@@ -108,29 +117,32 @@ export interface Goal {
   madeFor: Target | typeof REPEAT;
   /** Other "made for"s it covers: Pattern to repeating SVG is the pattern and the border it finds. */
   alsoFor?: string[];
-  /** The illustration style it draws in: Remix to SVG is the illustration in the picture's own style (REMIX_STYLE). */
+  /** The illustration style it draws in: Remix to SVG and Remix to Image are the illustration in the picture's own style (REMIX_STYLE). */
   style?: string;
+  /** A remix: what it becomes. */
+  remixTo?: RemixTo;
 }
 export const GOAL_GROUPS = { copy: 'Copy what is there', new: 'Make something new' } as const;
-// Named as what goes in and what comes out (the user's names, 2026-11-12), three to a group
+// Named as what goes in and what comes out (the user's names, 2026-11-12); Remix to Image added beside Remix to SVG (2026-11-23)
 export const GOALS: Goal[] = [
   { id: 'vector', group: 'copy', label: 'Image to SVG', line: 'Your picture traced as it is, one layer per flat color: its shapes and layout stay exactly as they are.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: 'object' },
   { id: 'cutout', group: 'copy', label: 'Image to transparent PNG', line: 'The object lifted off its plain background, set level and cleaned up, as a transparent PNG or WebP.', gives: 'PNG or WebP', speed: 'Seconds', cost: 'Free', type: 'cutout', madeFor: 'auto' },
   { id: 'repeat', group: 'copy', label: 'Pattern to repeating SVG', line: 'One tile or strip that repeats seamlessly, across and down for a pattern or in one direction for a border.', gives: 'SVG', speed: 'Seconds', cost: 'Free', type: 'trace', madeFor: REPEAT, alsoFor: ['pattern', 'border'] },
-  { id: 'remix', group: 'new', label: 'Remix to SVG', line: 'A new piece in your picture\u2019s own style: the model describes the picture, ComfyUI draws that on white, and the drawing is traced to SVG.', gives: 'SVG', speed: 'A few minutes', cost: 'Under 1\u00a2 each', type: 'illustration', madeFor: 'auto', style: REMIX_STYLE },
+  { id: 'remix', group: 'new', label: 'Remix to SVG', line: 'A new piece in your picture\u2019s own style: the model describes the picture, ComfyUI draws that on white, and the drawing is traced to SVG.', gives: 'SVG', speed: 'A few minutes', cost: 'Under 1\u00a2 each', type: 'illustration', madeFor: 'auto', style: REMIX_STYLE, remixTo: 'svg' },
+  { id: 'remix-image', group: 'new', label: 'Remix to Image', line: 'A new illustration in your picture\u2019s own style: the model describes the picture and ComfyUI draws that, kept as the picture it drew.', gives: 'PNG or WebP', speed: 'A minute or two', cost: 'Under 1\u00a2 each', type: 'illustration', madeFor: 'auto', style: REMIX_STYLE, remixTo: 'image' },
   { id: 'flat', group: 'new', label: 'Image to page-ready SVG', line: 'Clean flat art for a frame, border, corner or ornament that fits any page size, with the data an app needs.', gives: 'App package', speed: 'Minutes', cost: 'A few cents each', type: 'vector', madeFor: 'auto' },
   { id: 'illustration', group: 'new', label: 'Image to new art style', line: 'Your picture redrawn in one of Talari\u2019s art styles and themes, its pose and layout kept.', gives: 'PNG or WebP', speed: 'A minute', cost: 'Free', type: 'illustration', madeFor: 'auto' },
 ];
 /** The goal a result or the chosen options come from; a result made before the types were dropped has none. */
-export const goalOf = (o: { type: OutputType | string; madeFor?: string; style?: string }): Goal | undefined =>
+export const goalOf = (o: { type: OutputType | string; madeFor?: string; style?: string; remixTo?: RemixTo }): Goal | undefined =>
   GOALS.find((g) => g.type === o.type && (g.type === 'trace' ? g.madeFor === o.madeFor || !!g.alsoFor?.includes(o.madeFor ?? '')
-    // an illustration in the picture's own style is Remix to SVG; in any other, Image to new art style
-    : g.type === 'illustration' ? (g.style === REMIX_STYLE) === (o.style === REMIX_STYLE) : true));
+    // an illustration in the picture's own style is Remix to SVG or Remix to Image, by what it becomes; in any other, Image to new art style
+    : g.type === 'illustration' ? (g.style === REMIX_STYLE) === (o.style === REMIX_STYLE) && (g.style !== REMIX_STYLE || g.remixTo === remixToOf(o)) : true));
 /** A short name for what a result was made as, for its tile. */
-export const madeAs = (o: { type: OutputType | string; madeFor?: string; style?: string }) => goalOf(o)?.label ?? typeInfo(o.type).label;
+export const madeAs = (o: { type: OutputType | string; madeFor?: string; style?: string; remixTo?: RemixTo }) => goalOf(o)?.label ?? typeInfo(o.type).label;
 /** A result's line on its tile and in the viewer: what it was made as, its art style (unless that is what it was made as: Remix to SVG)
  * and its theme. */
-export const madeAsLine = (o: { type: OutputType | string; madeFor?: string; style?: string; theme?: string }) =>
+export const madeAsLine = (o: { type: OutputType | string; madeFor?: string; style?: string; remixTo?: RemixTo; theme?: string }) =>
   [madeAs(o), goalOf(o)?.style ? undefined : findStyle(o.style ?? '')?.label, findTheme(o.theme ?? '')?.label].filter(Boolean).join(' \u00b7 ');
 
 /** The one file a result is taken as, and the one other form worth a small link beside it. A vector comes as its SVG (as the app package where it has
@@ -258,8 +270,10 @@ export interface RestyleOptions {
   format: OutputFormat;
   /** The user's own words, added to the prompt. */
   notes: string;
-  /** Remix to SVG: how closely the picture is described, and how far its drawing is posterized. */
+  /** Remix to SVG and Remix to Image: how closely the picture is described, and (Remix to SVG) how far its drawing is posterized. */
   remixLevel: RemixLevel;
+  /** A remix: traced into an SVG, or kept as the picture drawn. */
+  remixTo: RemixTo;
   /** Redraw the whole figure from a picture of part of it (WHOLE_DENOISE), for illustrations. */
   whole: boolean;
   /** The shape of the canvas a whole figure is drawn on. */
@@ -274,7 +288,7 @@ export interface RestyleOptions {
 
 export const DEFAULT_OPTIONS: RestyleOptions = {
   type: 'illustration', style: '', rotateStyles: false, theme: '', closeness: 'balanced', quality: 'auto', variations: 1,
-  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', remixLevel: 'detailed', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
+  background: 'original', size: 'drawn', enhance: false, format: 'png', notes: '', remixLevel: 'detailed', remixTo: 'svg', whole: false, ratio: '2:3', madeFor: 'auto', cleanup: 'light', clearInside: true,
 };
 
 export type InputStatus = 'preparing' | 'ready' | 'failed';
@@ -483,11 +497,17 @@ export function cleanOptions(raw: any): RestyleOptions {
   if (!cutoutOnly(o)) o.format = pick(raw?.format, ['png', 'webp', 'jpeg'] as const, o.format);
   o.notes = typeof raw?.notes === 'string' ? raw.notes.trim().slice(0, 300) : '';
   o.remixLevel = pick(raw?.remixLevel, REMIX_LEVELS.map((l) => l.value), o.remixLevel);
+  o.remixTo = pick(raw?.remixTo, ['svg', 'image'] as const, o.remixTo);
   // a trace is the same every time: one version
   o.whole = PICTURE_LED_TYPES.includes(o.type) && raw?.whole === true;
-  // a remix draws from its own description of the picture, which Draw it whole's would replace; it is taken as its SVG, and the drawing
-  // beside it is a PNG (which opens everywhere and keeps every pixel for editing), so it has no file type to choose
-  if (o.style === REMIX_STYLE) { o.whole = false; o.format = 'png'; }
+  // a remix draws from its own description of the picture, which Draw it whole's would replace. Remix to SVG is taken as its SVG, and the
+  // drawing beside it is a PNG (which opens everywhere and keeps every pixel for editing), so it has no file type to choose. Remix to Image
+  // is the drawing, which is drawn on white: it has no ground of the picture's own to keep, so it is white unless another is chosen
+  if (o.style === REMIX_STYLE) {
+    o.whole = false;
+    if (o.remixTo === 'svg') o.format = 'png';
+    else if (o.background === 'original') o.background = 'white';
+  } else o.remixTo = 'svg';
   o.ratio = pick(raw?.ratio, RATIOS.map((r) => r.value), o.ratio);
   o.cleanup = pick(raw?.cleanup, CLEANUPS.map((c) => c.value), o.cleanup);
   o.clearInside = raw?.clearInside !== false;

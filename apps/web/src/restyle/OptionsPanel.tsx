@@ -1,4 +1,4 @@
-import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_LEVELS, remixLevelOf, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
+import { CATALOG, CLOSENESS, GOALS, PICTURE_LED_TYPES, QUALITIES, REMIX_DENOISE, REMIX_STEPS, REMIX_LEVELS, REMIX_STYLE, remixLevelOf, REPEATS, CLEANUPS, RATIOS, TARGETS, denoiseOf, drawnByModel, findStyle, goalOf, styleChoices, styleFits, tracedOnly, cutoutOnly, typeInfo, wantsStyleReference, WHOLE_DENOISE, type Goal, type RestyleOptions } from '@telios/shared';
 import type { Health } from '../api.ts';
 import { GoalPicker } from './GoalPicker.tsx';
 
@@ -35,23 +35,28 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
   const choose = (g: Goal) => {
     set('type', g.type);
     set('madeFor', g.madeFor);
-    // Remix to SVG is the illustration in the picture's own style; every other result starts with none
+    // Remix to SVG and Remix to Image are the illustration in the picture's own style; every other result starts with none
     set('style', g.style ?? '');
+    set('remixTo', g.remixTo ?? 'svg');
     set('rotateStyles', false);
     set('theme', '');
     if (g.type !== 'illustration') set('whole', false);
     if (g.type !== 'illustration' && g.type !== 'vector') set('variations', 1);
     // what each kind of result is on: a cutout, a vector and a pattern tile or border have no ground of their own to keep
     if (g.type !== 'illustration' && !(g.type === 'trace' && g.madeFor === 'object')) set('background', 'transparent');
-    set('format', g.type === 'cutout' ? 'webp' : g.style || options.format === 'jpeg' || cutoutOnly(options) ? 'png' : options.format);
+    // Remix to Image is drawn on white: it has no ground of the picture's own to keep
+    if (g.remixTo === 'image' && options.background === 'original') set('background', 'white');
+    set('format', g.type === 'cutout' ? 'webp' : g.remixTo === 'svg' || options.format === 'jpeg' || cutoutOnly(options) ? 'png' : options.format);
   };
   // Draw it whole has the model describe the whole figure, which is what is drawn
   const noWhole = health && !health.model.ok ? `Draw it whole needs the model to describe the figure: ${health.model.error ?? 'set one up in .env'}` : '';
   const quality = QUALITIES.find((q) => q.value === type.quality)!;
   const keepGround = options.background === 'original';
   // Remix draws from its own description of the picture, so Draw it whole (which describes a whole figure) is not offered with it
-  // Remix to SVG: drawn from the model's description, so it has no art style, no Follow the original and no Draw it whole
-  const remixing = goal.id === 'remix';
+  // Remix to SVG and Remix to Image: drawn from the model's description, so they have no art style, no Follow the original and no
+  // Draw it whole; only Remix to SVG is traced, so it alone has no file type
+  const remixing = goal.style === REMIX_STYLE;
+  const tracing = goal.remixTo === 'svg';
   return (
     <>
       <section className="panel-section">
@@ -69,13 +74,13 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
       <section className="panel-section">
         <h2><span className="step">3</span> Adjust</h2>
         {remixing && (health && !health.model.ok
-          ? <div className="sub warn">Remix to SVG needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
-          : <div className="sub">Drawn on a blank canvas from the model\u2019s description of each picture (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), then traced into an SVG of flat colors.</div>)}
+          ? <div className="sub warn">{goal.label} needs the model to describe each picture: {health.model.error ?? 'set one up in .env'}.</div>
+          : <div className="sub">Drawn on a blank canvas from the model\u2019s description of each picture (denoise {REMIX_DENOISE}, {REMIX_STEPS} steps), {tracing ? 'then traced into an SVG of flat colors' : 'and kept as the picture drawn'}.</div>)}
         {remixing && (
           <div className="field">
             <div className="label">Level</div>
             <Seg label="Level" value={options.remixLevel} onChange={(v) => set('remixLevel', v)} options={REMIX_LEVELS.map((l) => ({ value: l.value, label: l.label }))} />
-            <div className="sub">{remixLevelOf(options).hint}</div>
+            <div className="sub">{tracing ? remixLevelOf(options).hint : remixLevelOf(options).drawnHint}</div>
           </div>
         )}
         {(cutout || (traced && goal.id === 'vector')) && (
@@ -179,7 +184,7 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <input className="text" value={options.notes} maxLength={300} placeholder={byModel ? 'Optional: one ink, keep the rosettes, a deeper foot…' : 'Optional: gold and deep red, thin lines…'} onChange={(e) => set('notes', e.target.value)} />
         </label>}
         {/* Remix to SVG is taken as its SVG: the drawing beside it is always a PNG */}
-        {illustration && !remixing && (
+        {illustration && !tracing && (
           <div className="field">
             <div className="label">File type</div>
             <Seg label="File type" value={options.format === 'webp' ? 'webp' : 'png'} onChange={(v) => set('format', v)} options={[{ value: 'png', label: 'PNG' }, { value: 'webp', label: 'WebP' }]} />
@@ -189,14 +194,17 @@ export function OptionsPanel({ options, set, health }: { options: RestyleOptions
           <label className="field">
             <div className="label">Background</div>
             <select value={options.background} onChange={(e) => set('background', e.target.value as RestyleOptions['background'])}>
-              <option value="original">Keep original</option>
+              {/* Remix to Image is drawn on white, with no ground of the picture's own to keep */}
+              {!(remixing && !tracing) && <option value="original">Keep original</option>}
               <option value="transparent">Transparent</option>
               <option value="white">White</option>
               <option value="black">Black</option>
               <option value="green">Green</option>
             </select>
-            <div className="sub">{keepGround ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it.' : 'The subject is cut out of the picture and put on this background.'}</div>
-            {options.background !== 'white' && !keepGround && health && !health.comfy.cutout && (
+            <div className="sub">{remixing
+              ? (tracing ? 'The white it is drawn on is cleared by the trace.' : options.background === 'white' ? 'Kept as drawn, on white.' : 'Drawn on white, then the white round the subject is cleared and this put in its place.')
+              : keepGround ? 'Nothing is cut out: the picture is redrawn with its own background. Choose a background to cut the subject out onto it.' : 'The subject is cut out of the picture and put on this background.'}</div>
+            {options.background !== 'white' && !keepGround && !remixing && health && !health.comfy.cutout && (
               <div className="sub">No background-removal model here, so illustrations are drawn on a flat green (or blue) backdrop and cut out by color.</div>
             )}
           </label>

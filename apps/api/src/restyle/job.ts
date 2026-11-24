@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { BACKGROUND_HEX, REMIX_STEPS, REMIX_STYLE, denoiseOf, remixLevelOf, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
+import { BACKGROUND_HEX, REMIX_STEPS, denoiseOf, isRemix, remixesToSvg, remixLevelOf, findStyle, isOffered, qualityOf, typeInfo, wantsStyleReference, wholeAspect, type DrawSettings, type RestyleResult } from '@telios/shared';
 import { provider } from '../engine/llm.ts';
 import { python } from '../python.ts';
 import { comfy } from '../comfy/client.ts';
@@ -110,21 +110,22 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // redrawn (so it starts on flat white) and after (so it ends on the ground asked for: clear, white,
     // black or green); without a model it is drawn on a flat key color, green (blue if the picture has
     // greens), and cut out by color. With no ground chosen (the original's own) nothing is cut out at all.
+    // Remix: the model describes the picture closely and that is drawn on a blank canvas, in its own steps whatever the quality,
+    // then traced into an SVG (Remix to SVG) or kept as drawn (Remix to Image); Draw it whole is drawn as any whole figure
+    const remixing = isRemix(o);
+    const tracing = remixesToSvg(o);
     const removal = info.backgroundRemoval;
     const keep = o.background === 'original';
-    const byModel = !!removal && !keep;
-
-    // Remix: the model describes the picture closely and that is drawn on a blank canvas, in its own steps whatever the quality,
-    // then traced into an SVG (Draw it whole is drawn as any whole figure)
-    const remixing = o.style === REMIX_STYLE && !o.whole;
+    // a remix is cleared from white by color, never by the model (see below)
+    const byModel = !!removal && !keep && !remixing;
     if (o.whole && !provider().provider) throw new Error('Draw it whole needs a model, to describe the whole figure before it is drawn.');
     if (remixing && !provider().provider) throw new Error('Remix needs a model, to describe the picture before it is drawn.');
     const { w, h, tw, th } = o.whole ? wholeSizes(o) : drawnSizes([meta.width!, meta.height!], o, input?.originalSize);
     // a remix is not drawn on a key color (nothing of the picture is drawn from): it is asked for on white, and cleared from white by
-    // its trace, never by the model (a subject model keeps a tinted part of an ink drawing and drops a plain white one, so half of
-    // the drawing came out clear and half white)
-    const clearing = !keep && !remixing && (o.background !== 'white' || byModel);
-    const byColor = clearing && !removal;
+    // its trace (Remix to SVG) or by color round the outside (Remix to Image, on any ground but white), never by the model (a subject
+    // model keeps a tinted part of an ink drawing and drops a plain white one, so half of the drawing came out clear and half white)
+    const clearing = !keep && (remixing ? !tracing && o.background !== 'white' : o.background !== 'white' || byModel);
+    const byColor = clearing && !removal && !remixing;
     const enlarges = tw > w && o.enhance && info.upscalers.length > 0;
     const steps = remixing ? REMIX_STEPS : quality.steps;
     // the stages this picture goes through, so the progress bar knows its way
@@ -136,7 +137,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
       { label: 'Drawing', seconds: Math.round(28 * steps / 20) },
       ...(clearing ? [{ label: 'Clearing the background', seconds: byModel ? 4 : 2 }] : []),
       ...(enlarges ? [{ label: 'Enlarging', seconds: 15 }] : []),
-      ...(remixing ? [{ label: 'Tracing to SVG', seconds: 8 }] : []),
+      ...(tracing ? [{ label: 'Tracing to SVG', seconds: 8 }] : []),
       { label: 'Finishing', seconds: 2 },
     ]);
 
@@ -257,7 +258,7 @@ export async function drawResult(id: string, signal: AbortSignal) {
     // is kept too, clear where the trace is (its paper, and the paper inside it as the level asks), so the two match; if the trace
     // fails, the drawing is cleared from white round the outside and stays the result
     let svg = false;
-    if (remixing) {
+    if (tracing) {
       stage('Tracing to SVG');
       const drawn = path.join(scratch, 'drawn.png');
       fs.writeFileSync(drawn, png);

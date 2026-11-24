@@ -31,11 +31,11 @@ test('each kind of result has one main file, and at most one other form beside i
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp', also: 'png' });
   assert.deepEqual(mainFile({ options: { type: 'cutout', madeFor: 'auto', format: 'png' }, files: {} }), { format: 'png', also: 'webp' });
   assert.deepEqual(mainFile({ options: { type: 'illustration', madeFor: 'auto', format: 'webp' }, files: {} }), { format: 'webp' });
-  // six results, three to a group, named as what goes in and what comes out (Image to new SVG, the model's remix, removed 2026-11-13;
-  // Remix to SVG is ComfyUI's)
+  // seven results, named as what goes in and what comes out (Image to new SVG, the model's remix, removed 2026-11-13; Remix to SVG is
+  // ComfyUI's; Remix to Image, the same remix kept as the picture drawn, added 2026-11-23)
   assert.deepEqual(GOALS.map((g) => [g.group, g.label]), [
     ['copy', 'Image to SVG'], ['copy', 'Image to transparent PNG'], ['copy', 'Pattern to repeating SVG'],
-    ['new', 'Remix to SVG'], ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
+    ['new', 'Remix to SVG'], ['new', 'Remix to Image'], ['new', 'Image to page-ready SVG'], ['new', 'Image to new art style'],
   ]);
   // an illustration in the picture's own style is Remix to SVG, in any other Image to new art style; its line does not name Remix twice
   assert.equal(goalOf({ type: 'illustration', madeFor: 'auto', style: 'remix' })!.id, 'remix');

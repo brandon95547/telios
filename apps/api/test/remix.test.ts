@@ -8,7 +8,7 @@ process.env.TELIOS_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'telios-remix-te
 
 process.env.TELIOS_PROVIDER = 'none';   // no model: nothing is described
 
-const { REMIX_DENOISE, REMIX_LEVELS, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, remixLevelOf, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
+const { GOALS, REMIX_DENOISE, REMIX_LEVELS, REMIX_STEPS, REMIX_STYLE, WHOLE_DENOISE, cleanOptions, goalOf, isRemix, madeAsLine, remixesToSvg, remixLevelOf, denoiseOf, findStyle, mainFile, settingRows, styleChoices } = await import('@telios/shared');
 const sharp = (await import('sharp')).default;
 const { traceToSvg } = await import('../src/restyle/trace-svg.ts');
 const { cleanAnswer } = await import('../src/restyle/read.ts');
@@ -131,4 +131,43 @@ test('the model\'s answer is one run of prose: lines joined, quotes taken off, c
   assert.equal(cleanAnswer('A drawing.\nOf a rose.', 400), 'A drawing. Of a rose.');
   assert.equal(cleanAnswer('  ', 400), null);
   assert.equal(cleanAnswer('First sentence here. Second one that runs on.', 30), 'First sentence here.');
+});
+
+test('Remix to Image sits beside Remix to SVG under Make something new: the same remix, kept as the picture drawn', () => {
+  const ids = GOALS.filter((g) => g.group === 'new').map((g) => g.id);
+  assert.deepEqual(ids.slice(0, 2), ['remix', 'remix-image']);
+  const image = GOALS.find((g) => g.id === 'remix-image')!;
+  assert.equal(image.label, 'Remix to Image');
+  assert.equal(image.style, REMIX_STYLE);
+  assert.equal(goalOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image' }))!.id, 'remix-image');
+  assert.equal(goalOf(cleanOptions({ type: 'illustration', style: REMIX_STYLE }))!.id, 'remix', 'a remix is an SVG unless an image is asked for');
+  // a result made before Remix to Image has no remixTo, and was an SVG
+  assert.equal(goalOf({ type: 'illustration', style: REMIX_STYLE })!.id, 'remix');
+  assert.equal(goalOf(cleanOptions({ type: 'illustration', style: 'art-deco' }))!.id, 'illustration');
+  assert.equal(madeAsLine(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image', theme: 'egyptian' })).split(' \u00b7 ')[0], 'Remix to Image');
+});
+
+test('Remix to Image is drawn as Remix to SVG is, and is not traced', () => {
+  const o = cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image' });
+  assert.ok(isRemix(o));
+  assert.ok(!remixesToSvg(o));
+  assert.ok(remixesToSvg(cleanOptions({ type: 'illustration', style: REMIX_STYLE })));
+  assert.equal(denoiseOf(o), REMIX_DENOISE);
+  assert.match(settingRows({ options: o } as any).find((r) => r.label === 'Drawn at')!.value, /, 48 steps$/);
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image', whole: true }).whole, false);
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image', remixLevel: 'simple' }).remixLevel, 'simple', 'it has the levels too');
+  for (const l of REMIX_LEVELS) assert.doesNotMatch(l.drawnHint, /trace|colors|SVG/, `${l.value}: an image is not traced`);
+});
+
+test('Remix to Image keeps its file type, and is on white unless another ground is chosen', () => {
+  const webp = cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image', format: 'webp' });
+  assert.equal(webp.format, 'webp');
+  assert.deepEqual(mainFile({ options: webp, files: {} }), { format: 'webp' });
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image' }).background, 'white', 'drawn on white: no ground of the picture to keep');
+  for (const background of ['transparent', 'white', 'black', 'green']) {
+    assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'image', background }).background, background);
+  }
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, background: 'original' }).background, 'original', 'Remix to SVG unchanged');
+  assert.equal(cleanOptions({ type: 'illustration', style: 'art-deco', remixTo: 'image' }).remixTo, 'svg', 'only a remix has one');
+  assert.equal(cleanOptions({ type: 'illustration', style: REMIX_STYLE, remixTo: 'nonsense' }).remixTo, 'svg');
 });
