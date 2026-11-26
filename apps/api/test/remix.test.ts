@@ -79,6 +79,16 @@ test('Remix to SVG has three levels, Detailed by default: each describes less an
   assert.equal(rows.find((r) => r.label === 'Level')!.value, 'Medium');
 });
 
+test('every level begins with the kind of piece and its outline, so a corner, a border or a divider is not drawn as a whole frame', () => {
+  for (const level of REMIX_LEVELS.map((l) => l.value)) {
+    const said = instructionsFor(level);
+    assert.match(said, /Begin the first sentence with what kind of piece it is and its outline/, level);
+    assert.match(said, /\(1\) what kind of piece it is and its outline/, level);
+    assert.match(said, /frame corner \(only one corner: an L-shape/, level);
+    assert.match(said, /the rest of the page is plain white; call it a corner piece, a border strip or a divider, never a frame/, level);
+  }
+});
+
 test('without a model nothing is described (the job refuses to draw it then)', async () => {
   assert.equal(await readRemix(Buffer.from('not a picture')), null);
 });
