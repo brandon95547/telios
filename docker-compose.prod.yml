@@ -16,6 +16,9 @@ services:
     build: .
     image: telios-app
     restart: unless-stopped
+    # Memory ceiling, so a runaway here cannot take memory from the other sites on the server
+    # (about 450 MB in use on 2026-11-26).
+    mem_limit: ${APP_MEMORY_LIMIT:-1536m}
     network_mode: host
     env_file: .env
     environment:
@@ -35,6 +38,9 @@ services:
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu126}
     image: telios-comfyui
     restart: unless-stopped
+    # Memory ceiling, so a runaway here cannot take memory from the other sites on the server
+    # (not running on the shared server; FLUX and its encoders need about 14 GB in use on 2026-11-26).
+    mem_limit: ${COMFYUI_MEMORY_LIMIT:-16g}
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
